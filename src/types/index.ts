@@ -3,6 +3,8 @@ export interface Equipment {
   name: string;
   defaultPower: number; // Watts
   icon: string;
+  category: string;
+  subCategory: string;
 }
 
 export interface SelectedEquipment extends Equipment {
