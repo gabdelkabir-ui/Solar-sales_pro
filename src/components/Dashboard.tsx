@@ -52,21 +52,21 @@ const Dashboard: React.FC<DashboardProps> = ({ equipment, onNext }) => {
   ];
 
   const statCards = [
-    { label: 'Total Power', value: `${totalPower} W`, icon: <SettingsIcon />, color: '#1976d2' },
-    { label: 'Daily Consumption', value: `${dailyKWh.toFixed(2)} kWh`, icon: <LightningIcon />, color: '#f57c00' },
-    { label: 'Monthly Consumption', value: `${monthlyKWh.toFixed(2)} kWh`, icon: <CalendarMonthIcon />, color: '#2e7d32' },
+    { label: 'Puissance totale', value: `${totalPower} W`, icon: <SettingsIcon />, color: '#1976d2' },
+    { label: 'Consommation journalière', value: `${dailyKWh.toFixed(2)} kWh`, icon: <LightningIcon />, color: '#f57c00' },
+    { label: 'Consommation mensuelle', value: `${monthlyKWh.toFixed(2)} kWh`, icon: <CalendarMonthIcon />, color: '#2e7d32' },
   ];
 
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" color="primary">Energy Dashboard</Typography>
+        <Typography variant="h5" color="primary">Tableau de bord énergétique</Typography>
         <Button 
           variant="contained" 
           endIcon={<ArrowForwardIcon />}
           onClick={onNext}
         >
-          See Solar Recommendation
+          Voir la recommandation solaire
         </Button>
       </Box>
 
@@ -92,7 +92,7 @@ const Dashboard: React.FC<DashboardProps> = ({ equipment, onNext }) => {
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 3 }}>
         <Paper sx={{ p: 3 }}>
-          <Typography variant="h6" gutterBottom>Consumption Breakdown (kWh)</Typography>
+          <Typography variant="h6" gutterBottom>Répartition de la consommation (kWh)</Typography>
           <Box sx={{ height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -117,7 +117,7 @@ const Dashboard: React.FC<DashboardProps> = ({ equipment, onNext }) => {
         </Paper>
 
         <Paper sx={{ p: 3 }}>
-          <Typography variant="h6" gutterBottom>Top Energy Consumers (Daily kWh)</Typography>
+          <Typography variant="h6" gutterBottom>Principaux consommateurs (kWh/jour)</Typography>
           <Box sx={{ height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={topConsumers} layout="vertical" margin={{ left: 20, right: 30 }}>

@@ -21,6 +21,14 @@ export interface CustomerInfo {
   notes: string;
 }
 
+export interface Client {
+  id: number;
+  name: string;
+  phone: string;
+  city: string;
+  notes: string;
+}
+
 export interface SolarSystemRecommendation {
   panelPower: number;
   panelCount: number;
@@ -35,4 +43,40 @@ export interface SolarSystemRecommendation {
 export interface ProjectData {
   customer: CustomerInfo;
   equipment: SelectedEquipment[];
+}
+
+export interface ColumnMapping {
+  excelColumn: string;
+  field: 'name' | 'phone' | 'city' | 'notes' | 'skip';
+}
+
+export interface Product {
+  id: number;
+  name: string;
+  slug: string;
+  category: 'panel' | 'battery' | 'inverter';
+  brand: string;
+  capacityWh: number | null;
+  outputPowerW: number | null;
+  expandable: boolean;
+  description: string | null;
+  keyFeatures: string[] | null;
+  priceMad: number | null;
+  url: string | null;
+  imageUrl: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductRecommendation {
+  panel: Product;
+  battery: Product;
+  inverter: Product;
+  panelCount: number;
+  panelPower: number;
+  batteryCapacity: number;
+  autonomyDays: number;
+  inverterPower: number;
+  totalPriceMad: number;
 }
