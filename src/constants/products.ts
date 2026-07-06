@@ -2,327 +2,120 @@ import { Product } from '../types';
 
 export const PRODUCT_CATALOG: Product[] = [
   {
-    id: 43,
-    name: "EcoFlow DELTA 2",
-    slug: "delta-2",
+    id: 1,
+    name: "BLUETTI Premium 100 V2",
+    slug: "premium-100-v2",
     category: "battery",
-    brand: "EcoFlow",
+    brand: "BLUETTI",
     capacityWh: 1024,
     outputPowerW: 1800,
-    expandable: true,
-    description: "Expandable portable power station from 1 kWh to 3 kWh.",
+    expandable: false,
+    description:
+      "Portable LiFePO4 power station with 1024Wh capacity, 1800W AC output (2700W Power Lifting), ultra-fast charging and 1000W solar input.",
     keyFeatures: [
-      "1 kWh base capacity",
-      "Expandable to 3 kWh",
-      "1800W output",
-      "Fast AC charging",
-      "App control"
+      "1024Wh LiFePO4 battery",
+      "1800W AC output (2700W peak Power Lifting)",
+      "1000W solar input",
+      "1200W Turbo AC charging",
+      "80% charge in 45 minutes",
+      "4000+ battery cycles",
+      "30dB quiet operation",
+      "10-year battery lifespan"
     ],
-    priceMad: 10500,
-    url: "https://www.easypower.ma/en/shop/category/power-stations-ecoflow-ecoflow-delta-88",
+    priceMad: null,
+    url: "https://fr.bluettipower.eu/products/bluetti-premium-100-v2-station-d-energie-portable?srsltid=AfmBOoqowoovTay4M7eUny9whM4rVtXxq3RDPiJFidC_pkl_hxBM_mn6",
+    imageUrl: "https://fr.bluettipower.eu/cdn/shop/files/Premium100V2EU_1.svg?v=1776948374&width=800",
+    isActive: true,
+    createdAt: "2026-07-06T10:00:00.000Z",
+    updatedAt: "2026-07-06T10:00:00.000Z"
+  },
+
+  {
+    id: 2,
+    name: "BLUETTI Balco 260",
+    slug: "balco-260",
+    category: "battery",
+    brand: "BLUETTI",
+    capacityWh: 2560,
+    outputPowerW: 1200,
+    expandable: true,
+    description:
+      "Smart balcony solar energy storage system with integrated bidirectional inverter and expandable LiFePO4 battery.",
+    keyFeatures: [
+      "2560Wh LiFePO4 battery",
+      "1200W bidirectional inverter",
+      "2400W solar input (4 MPPT)",
+      "Expandable to 15kWh",
+      "96.1% conversion efficiency",
+      "6000 battery cycles",
+      "IP65 protection",
+      "Wi-Fi & Bluetooth"
+    ],
+    priceMad: null,
+    url: "https://www.easypower.ma/",
     imageUrl: "",
     isActive: true,
-    createdAt: "2026-06-16T12:59:30.123Z",
-    updatedAt: "2026-06-16T12:59:30.123Z"
+    createdAt: "2026-07-06T10:00:00.000Z",
+    updatedAt: "2026-07-06T10:00:00.000Z"
   },
+
   {
-    id: 49,
-    name: "EcoFlow DELTA 2 Battery Extension",
-    slug: "delta-2-battery-extension",
+    id: 3,
+    name: "BLUETTI BC260 Expansion Battery",
+    slug: "bc260-expansion-battery",
     category: "battery",
-    brand: "EcoFlow",
-    capacityWh: 1024,
+    brand: "BLUETTI",
+    capacityWh: 2560,
     outputPowerW: null,
     expandable: false,
-    description: "Extra battery for DELTA 2 series.",
+    description:
+      "Expansion battery for the BLUETTI Balco 260 system.",
     keyFeatures: [
-      "1024Wh additional capacity",
-      "Easy plug-in",
-      "Storage compartment"
-    ],
-    priceMad: 6900,
-    url: "https://www.easypower.ma/en/shop/bex-000004-delta-2-battery-extension-72",
-    imageUrl: "",
-    isActive: true,
-    createdAt: "2026-06-16T12:59:30.133Z",
-    updatedAt: "2026-06-16T12:59:30.133Z"
-  },
-  {
-    id: 44,
-    name: "EcoFlow DELTA 2 Max",
-    slug: "delta-2-max",
-    category: "battery",
-    brand: "EcoFlow",
-    capacityWh: 2048,
-    outputPowerW: 2400,
-    expandable: true,
-    description: "Expandable from 2 kWh to 6 kWh. Ideal for home backup and outdoor use.",
-    keyFeatures: [
-      "2 kWh base capacity",
-      "Expandable to 6 kWh",
-      "2400W output",
-      "Fast solar charging",
-      "App control"
-    ],
-    priceMad: 17010,
-    url: "https://www.easypower.ma/en/shop/sel-000010-delta-2-max-100",
-    imageUrl: "",
-    isActive: true,
-    createdAt: "2026-06-16T12:59:30.123Z",
-    updatedAt: "2026-06-16T12:59:30.123Z"
-  },
-  {
-    id: 42,
-    name: "EcoFlow DELTA Pro",
-    slug: "delta-pro",
-    category: "battery",
-    brand: "EcoFlow",
-    capacityWh: 3600,
-    outputPowerW: 3600,
-    expandable: true,
-    description: "Portable home battery with up to 25 kWh expandable capacity. Integrates with Smart Home Panel.",
-    keyFeatures: [
-      "3600W output (4500W with X-Boost)",
-      "Expandable to 25 kWh",
-      "Fastest charging in the world",
-      "EV charging compatible",
-      "Smart Home Panel integration"
-    ],
-    priceMad: 37800,
-    url: "https://www.easypower.ma/en/shop/sel-000011-delta-pro-int-75",
-    imageUrl: "",
-    isActive: true,
-    createdAt: "2026-06-16T12:59:30.120Z",
-    updatedAt: "2026-06-16T12:59:30.120Z"
-  },
-  {
-    id: 48,
-    name: "EcoFlow DELTA Pro Battery Extension",
-    slug: "delta-pro-battery-extension",
-    category: "battery",
-    brand: "EcoFlow",
-    capacityWh: 3600,
-    outputPowerW: null,
-    expandable: false,
-    description: "Extra battery for DELTA Pro (expands capacity significantly).",
-    keyFeatures: [
-      "3600Wh additional capacity",
-      "Seamless integration",
-      "LFP battery"
-    ],
-    priceMad: 25000,
-    url: "https://www.easypower.ma/en/shop/bex-000005-delta-pro-battery-extension-74",
-    imageUrl: "",
-    isActive: true,
-    createdAt: "2026-06-16T12:59:30.133Z",
-    updatedAt: "2026-06-16T12:59:30.133Z"
-  },
-  {
-    id: 45,
-    name: "EcoFlow RIVER 2",
-    slug: "river-2",
-    category: "battery",
-    brand: "EcoFlow",
-    capacityWh: 256,
-    outputPowerW: 300,
-    expandable: false,
-    description: "Compact and lightweight portable power station.",
-    keyFeatures: [
-      "256Wh capacity",
-      "300W output",
-      "Fast charging",
-      "Lightweight design"
+      "2560Wh capacity",
+      "LiFePO4 battery",
+      "6000+ cycles",
+      "Expandable system up to 15kWh",
+      "IP65 protection",
+      "25kg weight"
     ],
     priceMad: null,
-    url: "https://www.easypower.ma/en/shop",
-    imageUrl: "",
+    url: "https://www.easypower.ma/",
+    imageUrl: "https://cdn.shopify.com/s/files/1/0566/6396/5893/files/Elite-200-V2-2025-02-13.png?v=1762851693&width=1125&height=1125&crop=center",
     isActive: true,
-    createdAt: "2026-06-16T12:59:30.126Z",
-    updatedAt: "2026-06-16T12:59:30.126Z"
+    createdAt: "2026-07-06T10:00:00.000Z",
+    updatedAt: "2026-07-06T10:00:00.000Z"
   },
+
   {
-    id: 46,
-    name: "EcoFlow RIVER 2 Max",
-    slug: "river-2-max",
-    category: "battery",
-    brand: "EcoFlow",
-    capacityWh: 512,
-    outputPowerW: 500,
-    expandable: false,
-    description: "Mid-size portable power station with good capacity.",
-    keyFeatures: [
-      "512Wh capacity",
-      "500W output",
-      "Fast charging",
-      "Portable design"
-    ],
-    priceMad: null,
-    url: "https://www.easypower.ma/en/shop",
-    imageUrl: "",
-    isActive: true,
-    createdAt: "2026-06-16T12:59:30.126Z",
-    updatedAt: "2026-06-16T12:59:30.126Z"
-  },
-  {
-    id: 47,
-    name: "EcoFlow RIVER 2 Pro",
-    slug: "river-2-pro",
-    category: "battery",
-    brand: "EcoFlow",
-    capacityWh: 768,
-    outputPowerW: 800,
-    expandable: false,
-    description: "High-performance portable power station.",
-    keyFeatures: [
-      "768Wh capacity",
-      "800W output",
-      "Fast charging",
-      "Multiple ports"
-    ],
-    priceMad: null,
-    url: "https://www.easypower.ma/en/shop",
-    imageUrl: "",
-    isActive: true,
-    createdAt: "2026-06-16T12:59:30.130Z",
-    updatedAt: "2026-06-16T12:59:30.130Z"
-  },
-  {
-    id: 50,
-    name: "EcoFlow DELTA Pro (Inverter 3600W)",
-    slug: "delta-pro-inverter",
-    category: "inverter",
-    brand: "EcoFlow",
-    capacityWh: null,
-    outputPowerW: 3600,
-    expandable: false,
-    description: "Powerful inverter from DELTA Pro, 3600W continuous output (4500W with X-Boost).",
-    keyFeatures: [
-      "3600W continuous output",
-      "4500W with X-Boost",
-      "Pure sine wave",
-      "EV charging compatible"
-    ],
-    priceMad: null,
-    url: "https://www.easypower.ma/en/shop/sel-000011-delta-pro-int-75",
-    imageUrl: "",
-    isActive: true,
-    createdAt: "2026-06-16T12:59:30.136Z",
-    updatedAt: "2026-06-16T12:59:30.136Z"
-  },
-  {
-    id: 51,
-    name: "EcoFlow Smart Home Panel",
-    slug: "smart-home-panel-inverter",
-    category: "inverter",
-    brand: "EcoFlow",
-    capacityWh: null,
-    outputPowerW: 5000,
-    expandable: false,
-    description: "Whole-home backup integration panel for DELTA Pro. Automatic backup power.",
-    keyFeatures: [
-      "Whole-home integration",
-      "Automatic backup",
-      "Compatible with DELTA Pro"
-    ],
-    priceMad: 25829,
-    url: "https://www.easypower.ma/en/shop/5004601008-smart-home-panel-76",
-    imageUrl: "",
-    isActive: true,
-    createdAt: "2026-06-16T12:59:30.136Z",
-    updatedAt: "2026-06-16T12:59:30.136Z"
-  },
-  {
-    id: 41,
-    name: "EcoFlow 100W Rigid Solar Panel",
-    slug: "100w-rigid-solar-panel",
-    category: "panel",
-    brand: "EcoFlow",
-    capacityWh: null,
-    outputPowerW: 100,
-    expandable: false,
-    description: "All-black rigid solar panel for permanent installation.",
-    keyFeatures: [
-      "100W output",
-      "23% conversion rate",
-      "IP68 waterproof",
-      "5-year warranty"
-    ],
-    priceMad: 1029,
-    url: "https://www.easypower.ma/en/shop/pso-000009-100w-rigid-solar-panel-83",
-    imageUrl: "",
-    isActive: true,
-    createdAt: "2026-06-16T12:59:30.120Z",
-    updatedAt: "2026-06-16T12:59:30.120Z"
-  },
-  {
-    id: 37,
-    name: "EcoFlow 110W Portable Solar Panel",
-    slug: "110w-portable-solar-panel",
-    category: "panel",
-    brand: "EcoFlow",
-    capacityWh: null,
-    outputPowerW: 110,
-    expandable: false,
-    description: "Foldable portable solar panel with high efficiency.",
-    keyFeatures: [
-      "110W output",
-      "23% conversion rate",
-      "IP68 waterproof",
-      "Foldable monobloc design"
-    ],
-    priceMad: 1995,
-    url: "https://www.easypower.ma/en/shop/pso-000006-110w-portable-solar-panel-81",
-    imageUrl: "",
-    isActive: true,
-    createdAt: "2026-06-16T12:59:30.106Z",
-    updatedAt: "2026-06-16T12:59:30.106Z"
-  },
-  {
-    id: 39,
-    name: "EcoFlow 160W Portable Solar Panel",
-    slug: "160w-portable-solar-panel",
-    category: "panel",
-    brand: "EcoFlow",
-    capacityWh: null,
-    outputPowerW: 160,
-    expandable: false,
-    description: "Lightweight foldable solar panel (7kg).",
-    keyFeatures: [
-      "160W output",
-      "Portable and foldable",
-      "High efficiency"
-    ],
-    priceMad: 3150,
-    url: "https://www.easypower.ma/en/shop/pso-000007-160w-portable-solar-panel-85",
-    imageUrl: "",
-    isActive: true,
-    createdAt: "2026-06-16T12:59:30.116Z",
-    updatedAt: "2026-06-16T12:59:30.116Z"
-  },
-  {
-    id: 40,
-    name: "EcoFlow 400W Portable Solar Panel",
+    id: 4,
+    name: "BLUETTI 400W Portable Solar Panel",
     slug: "400w-portable-solar-panel",
     category: "panel",
-    brand: "EcoFlow",
+    brand: "BLUETTI",
     capacityWh: null,
     outputPowerW: 400,
     expandable: false,
-    description: "High-power foldable solar panel for home and off-grid use.",
+    description:
+      "Foldable 400W portable solar panel designed for BLUETTI portable power stations and energy storage systems.",
     keyFeatures: [
       "400W output",
-      "Highly efficient",
-      "Foldable design"
+      "Foldable design",
+      "Portable",
+      "High conversion efficiency",
+      "Compatible with BLUETTI power stations",
+      "Outdoor use"
     ],
-    priceMad: 8000,
-    url: "https://www.easypower.ma/en/shop/pso-000008-400w-portable-solar-panel-87",
-    imageUrl: "",
+    priceMad: null,
+    url: "https://www.easypower.ma/en/shop/pso-000008-400w-portable-solar-panel-87#attr=205,206",
+    imageUrl: "https://www.easypower.ma/web/image/product.product/87/image_1024/%5BPSO-000008%5D%20400W%20PORTABLE%20SOLAR%20PANEL?unique=b565004",
     isActive: true,
-    createdAt: "2026-06-16T12:59:30.120Z",
-    updatedAt: "2026-06-16T12:59:30.120Z"
+    createdAt: "2026-07-06T10:00:00.000Z",
+    updatedAt: "2026-07-06T10:00:00.000Z"
   }
 ];
 
-export const getProductsByCategory = (category: 'panel' | 'battery' | 'inverter'): Product[] => {
+export const getProductsByCategory = (
+  category: 'panel' | 'battery' | 'inverter'
+): Product[] => {
   return PRODUCT_CATALOG.filter(p => p.category === category);
 };

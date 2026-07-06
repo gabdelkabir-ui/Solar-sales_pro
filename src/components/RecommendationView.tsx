@@ -6,6 +6,7 @@ import {
   Card, 
   CardContent, 
   CardActions,
+  CardMedia,
   Button,
   Divider,
   Stack,
@@ -102,7 +103,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
           batteryModel: `${rec.battery.name}`,
           autonomyDays: rec.autonomyDays,
           inverterPower: rec.inverterPower,
-          inverterModel: `${(rec.inverter.outputPowerW || 0) / 1000}kW ${rec.inverter.brand}`,
+          inverterModel: rec.inverter ? `${(rec.inverter.outputPowerW || 0) / 1000}kW ${rec.inverter.brand}` : 'N/A',
         },
         createdAt: new Date().toISOString(),
       };
@@ -222,6 +223,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
       color: theme.palette.primary.main,
       gradient: 'linear-gradient(135deg, #1976d2, #42a5f5)',
       url: rec.panel.url,
+      image: rec.panel.imageUrl,
     },
     {
       title: 'Batterie Lithium',
@@ -235,8 +237,12 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
       color: theme.palette.secondary.main,
       gradient: 'linear-gradient(135deg, #2e7d32, #66bb6a)',
       url: rec.battery.url,
+      image: rec.battery.imageUrl,
     },
-    {
+  ];
+
+  if (rec.inverter) {
+    recommendationCards.push({
       title: 'Onduleur Hybride',
       icon: <BoltIcon sx={{ fontSize: 40, color: '#fbc02d' }} />,
       specs: [
@@ -248,8 +254,9 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
       color: '#fbc02d',
       gradient: 'linear-gradient(135deg, #f57c00, #ffb74d)',
       url: rec.inverter.url,
-    }
-  ];
+      image: rec.inverter.imageUrl,
+    });
+  }
 
   return (
     <Fade in timeout={500}>
@@ -311,7 +318,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
         </Box>
 
         <Stack spacing={4}>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr 1fr' }, gap: 3 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: rec.inverter ? '1fr 1fr 1fr' : '1fr 1fr' }, gap: 3 }}>
             {recommendationCards.map((card, index) => (
               <Zoom in timeout={300 + index * 100} key={index}>
                 <Card 
@@ -336,6 +343,19 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
                     borderTopLeftRadius: 16,
                     borderTopRightRadius: 16,
                   }} />
+                  {card.image && (
+                    <CardMedia
+                      component="img"
+                      sx={{
+                           height: 220,
+                           objectFit: 'contain',
+                           backgroundColor: '#f5f5f5',
+                          }}
+                      image={card.image}
+                      alt={card.title}
+                     
+                    />
+                  )}
                   <CardContent sx={{ p: 3, flexGrow: 1 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
                       {card.icon}
@@ -389,8 +409,8 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
                 </Typography>
                 <Typography variant="body1" sx={{ opacity: 0.95 }}>
                   Basée sur une consommation journalière calculée de <strong>{dailyKWh.toFixed(2)} kWh</strong> et une puissance de pointe de <strong>{totalPower} Watts</strong>, 
-                  cette installation est conçue pour couvrir 100 % de vos besoins énergétiques avec <strong>{rec.autonomyDays} jour{rec.autonomyDays > 1 ? 's' : ''} d'autonomie</strong>. 
-                  L'onduleur hybride permet une alimentation solaire et un soutien réseau si nécessaire.
+                  cette installation est conçue pour couvrir 100 % de vos besoins énergétiques avec <strong>{rec.autonomyDays} jour{rec.autonomyDays > 1 ? 's' : ''} d'autonomie</strong>.
+                  {rec.inverter && ' L\'onduleur hybride permet une alimentation solaire et un soutien réseau si nécessaire.'}
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 4, mt: 2 }}>
                   <Box>

@@ -39,7 +39,7 @@ export async function getRecommendationFromProducts(
   const batteries = allProducts.filter(p => p.category === 'battery' && p.capacityWh);
   const inverters = allProducts.filter(p => p.category === 'inverter' && p.outputPowerW);
 
-  if (panels.length === 0 || batteries.length === 0 || inverters.length === 0) {
+  if (panels.length === 0 || batteries.length === 0) {
     return null;
   }
 
@@ -65,15 +65,17 @@ export async function getRecommendationFromProducts(
 
   const panelPower = bestPanelCount * bestPanel.outputPowerW!;
 
-  // ---- Inverter selection ----
-  const requiredInverterPower = Math.max(3000, Math.ceil((peakPower * 1.25) / 1000) * 1000);
-  let bestInverter: Product = inverters[0];
-  let bestInverterDiff = Infinity;
-  for (const inv of inverters) {
-    const diff = Math.abs(inv.outputPowerW! - requiredInverterPower);
-    if (diff < bestInverterDiff) {
-      bestInverterDiff = diff;
-      bestInverter = inv;
+  // ---- Inverter selection (optional) ----
+  let bestInverter: Product | null = null;
+  if (inverters.length > 0) {
+    const requiredInverterPower = Math.max(3000, Math.ceil((peakPower * 1.25) / 1000) * 1000);
+    let bestInverterDiff = Infinity;
+    for (const inv of inverters) {
+      const diff = Math.abs(inv.outputPowerW! - requiredInverterPower);
+      if (diff < bestInverterDiff) {
+        bestInverterDiff = diff;
+        bestInverter = inv;
+      }
     }
   }
 
@@ -94,7 +96,7 @@ export async function getRecommendationFromProducts(
 
   const totalPriceMad = (bestPanel.priceMad || 0) * bestPanelCount
     + (bestBattery.priceMad || 0)
-    + (bestInverter.priceMad || 0);
+    + (bestInverter ? (bestInverter.priceMad || 0) : 0);
 
   return {
     panel: bestPanel,
@@ -104,7 +106,7 @@ export async function getRecommendationFromProducts(
     panelPower,
     batteryCapacity,
     autonomyDays,
-    inverterPower: bestInverter.outputPowerW!,
+    inverterPower: bestInverter ? bestInverter.outputPowerW! : 0,
     totalPriceMad,
   };
 }

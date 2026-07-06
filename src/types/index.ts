@@ -72,7 +72,7 @@ export interface Product {
 export interface ProductRecommendation {
   panel: Product;
   battery: Product;
-  inverter: Product;
+  inverter: Product | null;
   panelCount: number;
   panelPower: number;
   batteryCapacity: number;

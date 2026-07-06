@@ -7,7 +7,7 @@ import {
   Divider, 
   Table, 
   TableBody, 
-  TableCell, 
+ TableCell, 
   TableContainer, 
   TableHead, 
   TableRow,
@@ -272,6 +272,15 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment }) => {
                 '@media print': { gap: 2 },
               }}>
                 <Box>
+                  {rec.panel.imageUrl && (
+                    <Box sx={{ mb: 1.5, textAlign: 'center' }}>
+                      <img 
+                        src={rec.panel.imageUrl} 
+                        alt={rec.panel.name}
+                        style={{ maxHeight: 100, maxWidth: '100%', objectFit: 'contain' }}
+                      />
+                    </Box>
+                  )}
                   <Typography variant="body2" sx={{ fontWeight: 700, color: theme.palette.primary.main }}>
                     Panneaux solaires
                   </Typography>
@@ -285,6 +294,15 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment }) => {
                   </Typography>
                 </Box>
                 <Box>
+                  {rec.battery.imageUrl && (
+                    <Box sx={{ mb: 1.5, textAlign: 'center' }}>
+                      <img 
+                        src={rec.battery.imageUrl} 
+                        alt={rec.battery.name}
+                        style={{ maxHeight: 100, maxWidth: '100%', objectFit: 'contain' }}
+                      />
+                    </Box>
+                  )}
                   <Typography variant="body2" sx={{ fontWeight: 700, color: theme.palette.secondary.main }}>
                     Batterie
                   </Typography>
@@ -297,29 +315,40 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment }) => {
                     {formatPrice(rec.battery.priceMad)}
                   </Typography>
                 </Box>
-                <Box>
-                  <Typography variant="body2" sx={{ fontWeight: 700, color: '#f57c00' }}>
-                    Onduleur
-                  </Typography>
-                  <Typography variant="body2" sx={{ mt: 0.5 }}>
-                    {rec.inverter.name}
-                  </Typography>
-                  <Typography variant="body2">Puissance : {rec.inverterPower} W</Typography>
-                  <Typography variant="body2">{rec.inverter.brand}</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600, color: '#f57c00', mt: 0.5 }}>
-                    {formatPrice(rec.inverter.priceMad)}
-                  </Typography>
-                </Box>
+                {rec.inverter && (
+                  <Box>
+                    {rec.inverter.imageUrl && (
+                      <Box sx={{ mb: 1.5, textAlign: 'center' }}>
+                        <img 
+                          src={rec.inverter.imageUrl} 
+                          alt={rec.inverter.name}
+                          style={{ maxHeight: 100, maxWidth: '100%', objectFit: 'contain' }}
+                        />
+                      </Box>
+                    )}
+                    <Typography variant="body2" sx={{ fontWeight: 700, color: '#f57c00' }}>
+                      Onduleur
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                      {rec.inverter.name}
+                    </Typography>
+                    <Typography variant="body2">Puissance : {rec.inverterPower} W</Typography>
+                    <Typography variant="body2">{rec.inverter.brand}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: '#f57c00', mt: 0.5 }}>
+                      {formatPrice(rec.inverter.priceMad)}
+                    </Typography>
+                  </Box>
+                )}
               </Box>
               
               <Divider sx={{ my: 2 }} />
               
               <Box sx={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: 1,
+                display: 'grid', 
+                gridTemplateColumns: rec.inverter ? '1fr 1fr 1fr' : '1fr 1fr', 
+                gap: 3, 
+                mb: 3,
+                '@media print': { gap: 2 },
               }}>
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
                   Prix total estimé
