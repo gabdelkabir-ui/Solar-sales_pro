@@ -2,6 +2,36 @@ import { Product } from '../types';
 
 export const PRODUCT_CATALOG: Product[] = [
   {
+  id: 47,
+  name: "BLUETTI Premium 200 V2",
+  slug: "premium-200-v2",
+  category: "battery",
+  brand: "BLUETTI",
+  capacityWh: 2073.6,
+  outputPowerW: 2700,
+  expandable: false,
+  description:
+    "Portable LiFePO₄ power station with 2073.6Wh capacity, 2700W AC output (4050W Power Lifting), ultra-fast charging, 1000W solar input, and intelligent app control.",
+  keyFeatures: [
+    "2073.6Wh LiFePO₄ battery",
+    "2700W AC output (4050W Power Lifting)",
+    "1000W solar input",
+    "1500W Turbo AC charging",
+    "6000+ battery cycles",
+    "0.015s UPS mode",
+    "WiFi & Bluetooth app control",
+    "100W USB-C fast charging",
+    "15W wireless charging",
+    "10-year battery lifespan"
+  ],
+  priceMad: null,
+  url: "https://fr.bluettipower.eu/products/bluetti-premium-200-v2-portable-power-station?srsltid=AfmBOooVQaLv3ysG2h_itX5V12MiCX6N-3lhj5vpe6LOSYRrUCEitDHO",
+  imageUrl: "https://fr.bluettipower.eu/cdn/shop/files/Premium_200_V2_EU_1x_4eb94afd-ffa3-4dac-ba71-4960a4a922b9.png?v=1779264826&width=800",
+  isActive: true,
+  createdAt: "2026-07-06T10:00:00.000Z",
+  updatedAt: "2026-07-06T10:00:00.000Z"
+},
+  {
     id: 1,
     name: "BLUETTI Premium 100 V2",
     slug: "premium-100-v2",
