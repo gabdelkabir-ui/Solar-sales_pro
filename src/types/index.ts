@@ -43,6 +43,9 @@ export interface SolarSystemRecommendation {
 export interface ProjectData {
   customer: CustomerInfo;
   equipment: SelectedEquipment[];
+  orderNumber?: string;
+  paymentDate?: string;
+  energySimulation?: EnergySimulation;
 }
 
 export interface ColumnMapping {
@@ -72,11 +75,42 @@ export interface Product {
 export interface ProductRecommendation {
   panel: Product;
   battery: Product;
-  inverter: Product | null;
+  inverter?: Product;
   panelCount: number;
   panelPower: number;
   batteryCapacity: number;
   autonomyDays: number;
-  inverterPower: number;
+  inverterPower?: number;
   totalPriceMad: number;
+}
+
+export interface EnergySimulation {
+  // Étape 1 - Saisie facture
+  factureMensuelle: string;
+  typeContrat: 'HP/HC' | 'Base' | 'Tempo' | 'EJP';
+  consommationHP: string;
+  consommationHC: string;
+  tarifHP: string;
+  tarifHC: string;
+  presencePanneaux: boolean;
+
+  // Sélection des produits depuis le catalogue statique
+  selectedBatteryId?: number | null;
+  selectedPanelId?: number | null;
+
+  // Résultats calculés (étapes 2-7)
+  totalConsommation?: number;
+  pourcentageHP?: number;
+  pourcentageHC?: number;
+  ecartTarifaire?: number;
+  potentielOptimisation?: 'Faible' | 'Moyen' | 'Important';
+  energieDeplacee?: number;
+  consoApresHp?: number;
+  consoApresHc?: number;
+  economieQuotidienne?: number;
+  economieMensuelle?: number;
+  economieAnnuelle?: number;
+  prixBalco?: number;
+  roi?: number;
+  conclusion?: string;
 }

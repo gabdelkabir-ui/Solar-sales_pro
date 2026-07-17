@@ -20,35 +20,47 @@ import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import logo from '../constants/logo.png';
+import signature from '../constants/sign.png';
 import { CustomerInfo, SelectedEquipment, ProductRecommendation } from '../types';
+import { useProjectStore } from '../hooks/useProjectStore';
 import { calculateConsumption } from '../utils/solarCalculations';
 import { getRecommendationFromProducts } from '../utils/productsApi';
 
 interface ReportViewProps {
   customer: CustomerInfo;
   equipment: SelectedEquipment[];
+  onBack?: () => void;
+  projectId?: number | null;
+  overrideOrderNumber?: string;
+  overridePaymentDate?: string;
+  reportType?: 'bon-de-commande' | 'facture';
 }
 
-const ORDER_NUMBER = `BC-${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
 const TVA_RATE = 0.20; // 20%
 
-const ReportView: React.FC<ReportViewProps> = ({ customer, equipment }) => {
+const generateOrderNumber = () => {
+  return `BC-${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
+};
+
+const ReportView: React.FC<ReportViewProps> = ({ customer, equipment, onBack, projectId, overrideOrderNumber, overridePaymentDate, reportType = 'bon-de-commande' }) => {
+  const { orderNumber: storeOrderNumber, paymentDate: storePaymentDate, savedRecData } = useProjectStore();
   const page1Ref = useRef<HTMLDivElement>(null);
   const page2Ref = useRef<HTMLDivElement>(null);
   const [rec, setRec] = useState<ProductRecommendation | null>(null);
+  const hasSavedData = savedRecData && Object.keys(savedRecData).length > 0;
   const [loading, setLoading] = useState(true);
   const { totalPower, dailyKWh } = calculateConsumption(equipment);
 
-  const loadRecommendation = useCallback(async () => {
-    setLoading(true);
-    const result = await getRecommendationFromProducts(dailyKWh, totalPower);
-    if (result) setRec(result);
-    setLoading(false);
-  }, [dailyKWh, totalPower]);
-
   useEffect(() => {
-    loadRecommendation();
-  }, [loadRecommendation]);
+    if (hasSavedData) {
+      setLoading(false);
+    } else {
+      getRecommendationFromProducts(dailyKWh, totalPower).then(result => {
+        if (result) setRec(result);
+        setLoading(false);
+      });
+    }
+  }, [dailyKWh, totalPower, hasSavedData]);
 
   const handlePrint = () => {
     window.print();
@@ -92,7 +104,10 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment }) => {
       pdf.addImage(imgData2, 'PNG', margin, margin, imgWidth2, imgHeight2, '', 'FAST');
     }
     
-    pdf.save(`Bon_de_commande_${customer.name.replace(/\s+/g, '_')}.pdf`);
+    const pdfFilename = reportType === 'facture' 
+      ? `Facture_${customer.name.replace(/\s+/g, '_')}.pdf`
+      : `Bon_de_commande_${customer.name.replace(/\s+/g, '_')}.pdf`;
+    pdf.save(pdfFilename);
   };
 
   const formatPrice = (price: number | null) => {
@@ -100,12 +115,14 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment }) => {
     return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(price) + ' €';
   };
 
-  // Build line items from the recommendation
+  // Build line items - from savedRecData if available, otherwise from rec
   const getLineItems = () => {
+    if (hasSavedData) {
+      return buildLineItemsFromSavedData();
+    }
     if (!rec) return [];
     const items: Array<{ reference: string; designation: string; quantity: number; unitPrice: number; totalHT: number }> = [];
     
-    // Panel line
     items.push({
       reference: rec.panel.slug || rec.panel.id.toString(),
       designation: `Panneau solaire ${rec.panel.name} - ${rec.panel.brand} (${rec.panel.outputPowerW}W)`,
@@ -114,7 +131,6 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment }) => {
       totalHT: (rec.panel.priceMad ?? 0) * rec.panelCount,
     });
     
-    // Battery line
     items.push({
       reference: rec.battery.slug || rec.battery.id.toString(),
       designation: `Batterie ${rec.battery.name} - ${rec.battery.brand} (${(rec.battery.capacityWh ?? 0) / 1000} kWh)`,
@@ -123,7 +139,6 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment }) => {
       totalHT: rec.battery.priceMad ?? 0,
     });
     
-    // Inverter line if present
     if (rec.inverter) {
       items.push({
         reference: rec.inverter.slug || rec.inverter.id.toString(),
@@ -137,15 +152,76 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment }) => {
     return items;
   };
 
+  const buildLineItemsFromSavedData = () => {
+    const items: Array<{ reference: string; designation: string; quantity: number; unitPrice: number; totalHT: number }> = [];
+    if (!savedRecData) return items;
+    
+    items.push({
+      reference: savedRecData.panelModel || 'PANEL',
+      designation: savedRecData.panelModel || 'Panneau solaire',
+      quantity: savedRecData.panelCount || 1,
+      unitPrice: 0,
+      totalHT: 0,
+    });
+    
+    items.push({
+      reference: savedRecData.batteryModel || 'BATTERY',
+      designation: savedRecData.batteryModel || 'Batterie',
+      quantity: 1,
+      unitPrice: 0,
+      totalHT: 0,
+    });
+    
+    if (savedRecData.inverterModel) {
+      items.push({
+        reference: savedRecData.inverterModel || 'INVERTER',
+        designation: savedRecData.inverterModel || 'Onduleur',
+        quantity: 1,
+        unitPrice: 0,
+        totalHT: 0,
+      });
+    }
+    
+    return items;
+  };
+
   const lineItems = getLineItems();
   const totalHT = lineItems.reduce((sum, item) => sum + item.totalHT, 0);
   const tva = totalHT * TVA_RATE;
   const totalTTC = totalHT + tva;
 
-  // Generate a random order date (today) and payment date
+  // Format date safely
+  const formatDateSafe = (date: Date | null | undefined, formatStr: string) => {
+    try {
+      if (!date || isNaN(date.getTime())) return '________';
+      return format(date, formatStr, { locale: fr });
+    } catch {
+      return '________';
+    }
+  };
+
+  // Use payment date from store, or default to today + 30 days
+  const getPaymentDate = (): Date => {
+    const paymentDateSource = overridePaymentDate || storePaymentDate;
+    try {
+      if (paymentDateSource) {
+        const dateStr = paymentDateSource.includes('T') 
+          ? paymentDateSource 
+          : paymentDateSource + 'T00:00:00';
+        const d = new Date(dateStr);
+        if (!isNaN(d.getTime())) return d;
+      }
+    } catch {}
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d;
+  };
+  const paymentDate = getPaymentDate();
   const today = new Date();
-  const paymentDate = new Date(today);
-  paymentDate.setDate(paymentDate.getDate() + 30);
+
+  const orderNumber = overrideOrderNumber || storeOrderNumber || generateOrderNumber();
+  const showContent = !loading && (rec || hasSavedData);
+  const showEmpty = !loading && !rec && !hasSavedData;
 
   const paperStyle = {
     p: 4, 
@@ -159,13 +235,20 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment }) => {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', gap: 2, mb: 3, justifyContent: 'flex-end', '@media print': { display: 'none' } }}>
+      <Box sx={{ display: 'flex', gap: 2, mb: 3, justifyContent: 'space-between', '@media print': { display: 'none' } }}>
+        <Button 
+          variant="outlined" 
+          onClick={onBack}
+        >
+          ← Retour
+        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
         <Button 
           variant="outlined" 
           startIcon={<PrintIcon />} 
           onClick={handlePrint}
         >
-          Imprimer le bon de commande
+          {reportType === 'facture' ? 'Imprimer la facture' : 'Imprimer le bon de commande'}
         </Button>
         <Button 
           variant="contained" 
@@ -174,6 +257,7 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment }) => {
         >
           Exporter en PDF
         </Button>
+        </Box>
       </Box>
 
       {/* ===== PAGE 1: Main order content ===== */}
@@ -191,7 +275,7 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment }) => {
 
         {/* TITLE */}
         <Typography variant="h4" align="center" sx={{ fontWeight: 'bold', mb: 3, textTransform: 'uppercase' }}>
-          BON DE COMMANDE
+          {reportType === 'facture' ? 'FACTURE' : 'BON DE COMMANDE'}
         </Typography>
 
         {/* COMPANY INFO + DATE / ORDER NUMBER */}
@@ -202,13 +286,14 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment }) => {
             <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Siège social : 31 Rue des Martres de Madargue, 63200 RIOM, France</Typography>
             <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>RCS : Clermont-Ferrand</Typography>
             <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>SIRET : 93183542500014</Typography>
-            <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Email : s.zekraoui@easypower.ma</Typography>
-            <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Téléphone : +33 178766819</Typography>
+            <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Email : commercial@easypower-france.fr</Typography>
+            <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Service Technique : +33 6 72 07 97 27</Typography>
+            <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Service Commercial : +33 1 78 76 68 19</Typography>
+
           </Box>
           <Box sx={{ textAlign: 'right', fontSize: '0.85rem' }}>
             <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Date : {format(today, 'dd/MM/yyyy', { locale: fr })}</Typography>
-            <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Numéro de commande : {ORDER_NUMBER}</Typography>
-            <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Code Agence : TCD</Typography>
+            <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Numéro de commande : {orderNumber}</Typography>
           </Box>
         </Box>
 
@@ -222,11 +307,13 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment }) => {
         </Box>
 
         {/* LOADING STATE / CONTENT */}
-        {loading ? (
+        {loading && (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
             <CircularProgress size={30} />
           </Box>
-        ) : rec ? (
+        )}
+
+        {showContent && (
           <>
             {/* PRODUCT TABLE */}
             <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 1, fontSize: '0.9rem' }}>
@@ -275,51 +362,56 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment }) => {
               </Box>
             </Box>
 
-            {/* CONDITIONS */}
-            <Box sx={{ mb: 2, fontSize: '0.8rem' }}>
-              <Typography variant="body2" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
-                <strong>Conditions de paiement :</strong> Paiement à {format(paymentDate, 'dd/MM/yyyy', { locale: fr })} (30 jours net)
-              </Typography>
-              <Typography variant="body2" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
-                <strong>Pénalités de retard :</strong> conformément à l'article L441-10 du Code de commerce.
-              </Typography>
-              <Typography variant="body2" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
-                <strong>Clause de réserve de propriété :</strong> les marchandises restent la propriété de EASY POWER jusqu'au paiement intégral.
-              </Typography>
-              <Typography variant="body2" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
-                <strong>Litiges :</strong> tribunal compétent Clermont-Ferrand.
-              </Typography>
-            </Box>
+            {reportType !== 'facture' && (
+              <Box sx={{ mb: 2, fontSize: '0.8rem' }}>
+                <Typography variant="body2" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
+                  <strong>Conditions de paiement :</strong> Paiement à {formatDateSafe(paymentDate, 'dd/MM/yyyy')}
+                </Typography>
+                <Typography variant="body2" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
+                  <strong>Pénalités de retard :</strong> conformément à l'article L441-10 du Code de commerce.
+                </Typography>
+                <Typography variant="body2" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
+                  <strong>Clause de réserve de propriété :</strong> les marchandises restent la propriété de EASY POWER jusqu'au paiement intégral.
+                </Typography>
+                <Typography variant="body2" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
+                  <strong>Litiges :</strong> tribunal compétent Clermont-Ferrand.
+                </Typography>
+              </Box>
+            )}
 
             {/* SIGNATURES */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3, mt: 4 }}>
-              <Box sx={{ width: '45%' }}>
-                <Typography variant="body2" sx={{ fontSize: '0.8rem', mb: 4 }}>
+            <Box sx={{ mb: 2, mt: 4, textAlign: 'left' }}>
+              {reportType !== 'facture' && (
+                <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 'bold', mb: 2, textDecoration: 'underline' }}>
                   Signature client (Bon pour accord) : ____________________
                 </Typography>
-                <Box sx={{ border: '1px solid #000', p: 2, minHeight: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Typography variant="body2" sx={{ fontSize: '0.8rem', fontStyle: 'italic', color: '#999' }}>
-                    Cachet / Signature client
-                  </Typography>
-                </Box>
-              </Box>
-              <Box sx={{ width: '45%', textAlign: 'right' }}>
-                <Typography variant="body2" sx={{ fontSize: '0.8rem', mb: 1 }}>Signature EASY POWER :</Typography>
-                <Box sx={{ border: '1px solid #000', p: 2, minHeight: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Box sx={{ textAlign: 'center' }}>
-                    <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '0.8rem' }}>EASY POWER SASU</Typography>
-                    <Typography variant="body2" sx={{ fontSize: '0.7rem' }}>RCS Clermont-Ferrand</Typography>
-                    <Typography variant="body2" sx={{ fontSize: '0.7rem' }}>931 835425</Typography>
-                  </Box>
-                </Box>
-                <Box sx={{ mt: 1 }}>
+              )}
+              <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 'bold', mb: 3, textDecoration: 'underline' }}>
+                Signature EASY POWER :
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
                   <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>31 Rue des Martres de Madargue</Typography>
                   <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>63200, RIOM, FRANCE</Typography>
+                </Box>
+                <Box 
+                  component="img"
+                  src={signature}
+                  alt="Signature"
+                  sx={{ width: 200, height: 'auto', maxHeight: 180 }}
+                />
+                <Box sx={{ textAlign: 'right' }}>
+                  <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>EASY POWER SASU</Typography>
+                  <Typography variant="body2" sx={{ fontSize: '0.65rem' }}>RCS Clermont-Ferrand 931</Typography>
+                  <Typography variant="body2" sx={{ fontSize: '0.65rem' }}>835425</Typography>
+
                 </Box>
               </Box>
             </Box>
           </>
-        ) : (
+        )}
+
+        {showEmpty && (
           <Box sx={{ p: 3, bgcolor: '#f5f5f5', borderRadius: 2, mb: 4, textAlign: 'center' }}>
             <Typography variant="body2" color="text.secondary">
               Aucun produit disponible pour générer un bon de commande.
@@ -329,7 +421,7 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment }) => {
       </Paper>
 
       {/* ===== PAGE 2: CONDITIONS GENERALES DE VENTE (separate) ===== */}
-      {!loading && rec && (
+      {showContent && (
         <Paper ref={page2Ref} elevation={0} sx={{ ...paperStyle, mt: 4, '@media print': { pageBreakBefore: 'always', mt: 0 } }}>
           <Divider sx={{ my: 2 }} />
           <Typography variant="body1" align="center" sx={{ fontWeight: 'bold', fontSize: '0.9rem', mb: 1 }}>

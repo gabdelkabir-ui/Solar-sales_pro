@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { 
+import {
   ThemeProvider, 
   CssBaseline, 
   Container, 
@@ -18,7 +18,6 @@ import {
   TextField,
   Alert,
   Fade,
-  useTheme,
   Badge,
   Tooltip,
   IconButton,
@@ -35,10 +34,12 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import BuildIcon from '@mui/icons-material/Build';
 import FolderIcon from '@mui/icons-material/Folder';
 import DescriptionIcon from '@mui/icons-material/Description';
+import ElectricBoltIcon from '@mui/icons-material/ElectricBolt';
 import CloseIcon from '@mui/icons-material/Close';
 import theme from './theme';
 import CustomerForm from './components/CustomerForm';
 import EquipmentCalculator from './components/EquipmentCalculator';
+import EnergySimulation from './components/EnergySimulation';
 import Dashboard from './components/Dashboard';
 import RecommendationView from './components/RecommendationView';
 import ReportView from './components/ReportView';
@@ -91,6 +92,13 @@ const tabConfigs = [
     description: 'Ajoutez vos équipements'
   },
   { 
+    label: 'Simulation Énergétique', 
+    key: 'energy', 
+    adminOnly: false,
+    icon: <ElectricBoltIcon />,
+    description: 'Analyse tarifaire'
+  },
+  { 
     label: 'Tableau de bord', 
     key: 'dashboard', 
     adminOnly: false,
@@ -135,7 +143,6 @@ const tabConfigs = [
 ];
 
 function App() {
-  const theme = useTheme();
   const [activeTab, setActiveTab] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminDialogOpen, setAdminDialogOpen] = useState(false);
@@ -145,6 +152,10 @@ function App() {
   // Keep the ref in sync with state
   adminPasswordRef.current = adminPassword;
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [reportType, setReportType] = useState<'bon-de-commande' | 'facture'>('bon-de-commande');
+  const [reportProjectId, setReportProjectId] = useState<number | null>(null);
+  const [reportData, setReportData] = useState<{ orderNumber: string; paymentDate: string; customer: any; equipment: any[] } | null>(null);
   const store = useProjectStore();
 
   const visibleTabs = tabConfigs.filter(t => isAdmin || !t.adminOnly);
@@ -206,6 +217,62 @@ function App() {
     setActiveTab(0);
   };
 
+  const handleGenerateReportFromProject = (projectId: number, type: 'bon-de-commande' | 'facture' = 'bon-de-commande') => {
+    try {
+      const saved = localStorage.getItem('solar_saved_projects');
+      if (saved) {
+        const projects = JSON.parse(saved);
+        const project = projects.find((p: any) => p.id === projectId);
+        if (project) {
+          store.loadProject({
+            customer: project.customer,
+            equipment: project.equipment || [],
+            orderNumber: project.orderNumber || undefined,
+            paymentDate: project.paymentDate || undefined,
+            recommendation: project.recommendation || undefined,
+          });
+          setReportData({
+            orderNumber: project.orderNumber || '',
+            paymentDate: project.paymentDate || '',
+            customer: project.customer,
+            equipment: project.equipment || [],
+          });
+          setReportProjectId(projectId);
+          setReportType(type);
+          setShowReport(true);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load project for report:', err);
+    }
+  };
+
+  const handleGenerateInvoiceFromProject = (projectId: number) => {
+    handleGenerateReportFromProject(projectId, 'facture');
+  };
+
+  const handleViewSimulation = (projectId: number) => {
+    try {
+      const saved = localStorage.getItem('solar_saved_projects');
+      if (saved) {
+        const projects = JSON.parse(saved);
+        const project = projects.find((p: any) => p.id === projectId);
+        if (project) {
+          store.loadProject({
+            customer: project.customer,
+            equipment: project.equipment || [],
+            orderNumber: project.orderNumber || undefined,
+            paymentDate: project.paymentDate || undefined,
+            recommendation: project.recommendation || undefined,
+          });
+          setActiveTab(2); // Go to Energy Simulation tab
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load project for simulation:', err);
+    }
+  };
+
   const renderTabPanel = (tab: typeof tabConfigs[0]) => {
     switch (tab.key) {
       case 'customer':
@@ -227,11 +294,20 @@ function App() {
             onNext={() => setActiveTab(2)}
           />
         );
+      case 'energy':
+        return (
+          <EnergySimulation 
+            energySimulation={store.energySimulation}
+            setEnergySimulation={store.setEnergySimulation}
+            onNext={() => setActiveTab(3)}
+            onBack={() => setActiveTab(1)}
+          />
+        );
       case 'dashboard':
         return (
           <Dashboard 
             equipment={store.equipment}
-            onNext={() => setActiveTab(3)}
+            onNext={() => setActiveTab(4)}
           />
         );
       case 'recommendation':
@@ -239,7 +315,10 @@ function App() {
           <RecommendationView 
             equipment={store.equipment}
             customer={store.customer}
-            onNext={() => setActiveTab(7)}
+            onNext={() => {
+              setReportProjectId(null);
+              setShowReport(true);
+            }}
             onSaveSuccess={() => {
               store.resetProject();
               setActiveTab(0);
@@ -251,7 +330,13 @@ function App() {
       case 'equipment':
         return <EquipmentManager />;
       case 'projects':
-        return <SavedProjects />;
+        return (
+          <SavedProjects 
+            onGenerateReport={(id) => handleGenerateReportFromProject(id, 'bon-de-commande')}
+            onGenerateInvoice={handleGenerateInvoiceFromProject}
+            onViewSimulation={handleViewSimulation}
+          />
+        );
       case 'report':
         return (
           <ReportView 
@@ -390,82 +475,100 @@ function App() {
 
         {/* Main Content */}
         <Container maxWidth="lg" sx={{ flex: 1, py: 3 }}>
-          {/* Tabs */}
-          <Paper 
-            sx={{ 
-              width: '100%', 
-              mb: 3,
-              borderRadius: 3,
-              overflow: 'hidden',
-              border: `1px solid ${theme.palette.divider}`,
-              boxShadow: theme.shadows[1],
-            }}
-          >
-            <Tabs 
-              value={activeTab} 
-              onChange={handleTabChange} 
-              variant="scrollable"
-              scrollButtons="auto"
-              indicatorColor="primary"
-              textColor="primary"
-              sx={{
-                '& .MuiTab-root': {
-                  minHeight: 56,
-                  textTransform: 'none',
-                  fontWeight: 500,
-                  fontSize: '0.875rem',
-                  transition: 'all 0.2s ease',
-                  '&:hover': {
-                    bgcolor: theme.palette.action.hover,
-                  },
-                  '&.Mui-selected': {
-                    fontWeight: 700,
-                    color: theme.palette.primary.main,
-                  },
-                },
-                '& .MuiTabs-indicator': {
-                  height: 3,
-                  borderTopLeftRadius: 3,
-                  borderTopRightRadius: 3,
-                },
+          {showReport ? (
+            <ReportView 
+              key={reportProjectId || Date.now()}
+              customer={reportData?.customer || store.customer}
+              equipment={reportData?.equipment || store.equipment}
+              onBack={() => {
+                setShowReport(false);
+                setReportProjectId(null);
+                setReportData(null);
               }}
-            >
-              {visibleTabs.map((tab, index) => (
-                <Tab 
-                  key={tab.key} 
-                  label={tab.label} 
-                  icon={
-                    <Box 
-                      component="span" 
-                      sx={{ 
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        mr: 0.5,
-                      }}
-                    >
-                      {tab.icon}
-                    </Box>
-                  }
-                  iconPosition="start"
-                  id={`tab-${index}`}
-                  aria-controls={`tabpanel-${index}`}
+              overrideOrderNumber={reportData?.orderNumber}
+              overridePaymentDate={reportData?.paymentDate}
+              reportType={reportType}
+            />
+          ) : (
+            <>
+              {/* Tabs */}
+              <Paper 
+                sx={{ 
+                  width: '100%', 
+                  mb: 3,
+                  borderRadius: 3,
+                  overflow: 'hidden',
+                  border: `1px solid ${theme.palette.divider}`,
+                  boxShadow: theme.shadows[1],
+                }}
+              >
+                <Tabs 
+                  value={activeTab} 
+                  onChange={handleTabChange} 
+                  variant="scrollable"
+                  scrollButtons="auto"
+                  indicatorColor="primary"
+                  textColor="primary"
                   sx={{
-                    '& .MuiTab-iconWrapper': {
-                      fontSize: '1.1rem',
+                    '& .MuiTab-root': {
+                      minHeight: 56,
+                      textTransform: 'none',
+                      fontWeight: 500,
+                      fontSize: '0.875rem',
+                      transition: 'all 0.2s ease',
+                      '&:hover': {
+                        bgcolor: theme.palette.action.hover,
+                      },
+                      '&.Mui-selected': {
+                        fontWeight: 700,
+                        color: theme.palette.primary.main,
+                      },
+                    },
+                    '& .MuiTabs-indicator': {
+                      height: 3,
+                      borderTopLeftRadius: 3,
+                      borderTopRightRadius: 3,
                     },
                   }}
-                />
-              ))}
-            </Tabs>
-          </Paper>
+                >
+                  {visibleTabs.map((tab, index) => (
+                    <Tab 
+                      key={tab.key} 
+                      label={tab.label} 
+                      icon={
+                        <Box 
+                          component="span" 
+                          sx={{ 
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            mr: 0.5,
+                          }}
+                        >
+                          {tab.icon}
+                        </Box>
+                      }
+                      iconPosition="start"
+                      id={`tab-${index}`}
+                      aria-controls={`tabpanel-${index}`}
+                      sx={{
+                        '& .MuiTab-iconWrapper': {
+                          fontSize: '1.1rem',
+                        },
+                      }}
+                    />
+                  ))}
+                </Tabs>
+              </Paper>
 
-          {/* Tab Panels */}
-          {visibleTabs.map((tab, index) => (
-            <TabPanel key={tab.key} value={activeTab} index={index}>
-              {renderTabPanel(tab)}
-            </TabPanel>
-          ))}
+              {/* Tab Panels */}
+              {visibleTabs.map((tab, index) => (
+                <TabPanel key={tab.key} value={activeTab} index={index}>
+                  {renderTabPanel(tab)}
+                </TabPanel>
+              ))}
+            </>
+          )}
         </Container>
 
         {/* Footer */}

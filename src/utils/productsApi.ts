@@ -31,7 +31,8 @@ export async function seedProducts(): Promise<boolean> {
  */
 export async function getRecommendationFromProducts(
   dailyKWh: number,
-  peakPower: number
+  peakPower: number,
+  includePanels: boolean = true
 ): Promise<ProductRecommendation | null> {
   const allProducts = PRODUCT_CATALOG.filter(p => p.isActive);
 
@@ -39,31 +40,38 @@ export async function getRecommendationFromProducts(
   const batteries = allProducts.filter(p => p.category === 'battery' && p.capacityWh);
   const inverters = allProducts.filter(p => p.category === 'inverter' && p.outputPowerW);
 
-  if (panels.length === 0 || batteries.length === 0) {
+  if (batteries.length === 0) {
     return null;
   }
 
-  // ---- Panel selection ----
-  const sunHours = 4.5;
-  const requiredPanelPower = (dailyKWh * 1.2 * 1000) / sunHours; // in Watts
-  let bestPanel: Product = panels[0];
-  let bestPanelCount = 1;
-  let bestPanelDiff = Infinity;
+  // ---- Panel selection (only if includePanels is true) ----
+  let bestPanel: Product | null = null;
+  let bestPanelCount = 0;
+  let panelPower = 0;
 
-  for (const panel of panels) {
-    const pw = panel.outputPowerW!;
-    for (let count = 1; count <= 20; count++) {
-      const totalPower = count * pw;
-      const diff = Math.abs(totalPower - requiredPanelPower);
-      if (diff < bestPanelDiff) {
-        bestPanelDiff = diff;
-        bestPanel = panel;
-        bestPanelCount = count;
+  if (includePanels) {
+    if (panels.length === 0) return null;
+
+    const sunHours = 4.5;
+    const requiredPanelPower = (dailyKWh * 1.2 * 1000) / sunHours; // in Watts
+    bestPanel = panels[0];
+    let bestPanelDiff = Infinity;
+
+    for (const panel of panels) {
+      const pw = panel.outputPowerW!;
+      for (let count = 1; count <= 20; count++) {
+        const totalPower = count * pw;
+        const diff = Math.abs(totalPower - requiredPanelPower);
+        if (diff < bestPanelDiff) {
+          bestPanelDiff = diff;
+          bestPanel = panel;
+          bestPanelCount = count;
+        }
       }
     }
-  }
 
-  const panelPower = bestPanelCount * bestPanel.outputPowerW!;
+    panelPower = bestPanelCount * bestPanel.outputPowerW!;
+  }
 
   // ---- Inverter selection (optional) ----
   let bestInverter: Product | null = null;
@@ -94,14 +102,14 @@ export async function getRecommendationFromProducts(
   const batteryCapacity = bestBattery.capacityWh! / 1000;
   const autonomyDays = parseFloat((batteryCapacity / dailyKWh).toFixed(1));
 
-  const totalPriceMad = (bestPanel.priceMad || 0) * bestPanelCount
+  const totalPriceMad = (bestPanel ? (bestPanel.priceMad || 0) * bestPanelCount : 0)
     + (bestBattery.priceMad || 0)
     + (bestInverter ? (bestInverter.priceMad || 0) : 0);
 
   return {
-    panel: bestPanel,
+    panel: bestPanel || panels[0], // fallback panel for type safety
     battery: bestBattery,
-    inverter: bestInverter,
+    inverter: bestInverter || undefined,
     panelCount: bestPanelCount,
     panelPower,
     batteryCapacity,

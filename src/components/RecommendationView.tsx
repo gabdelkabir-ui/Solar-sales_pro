@@ -13,6 +13,11 @@ import {
   Snackbar,
   Alert,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
   Fade,
   Zoom,
   useTheme,
@@ -27,8 +32,11 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { SelectedEquipment, CustomerInfo, ProductRecommendation } from '../types';
+import { useProjectStore } from '../hooks/useProjectStore';
 import { calculateConsumption } from '../utils/solarCalculations';
 import { getRecommendationFromProducts } from '../utils/productsApi';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 interface RecommendationViewProps {
   equipment: SelectedEquipment[];
@@ -39,8 +47,13 @@ interface RecommendationViewProps {
 
 const STORAGE_KEY = 'solar_saved_projects';
 
+const generateOrderNumber = () => {
+  return `BC-${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
+};
+
 const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, customer, onNext, onSaveSuccess }) => {
   const theme = useTheme();
+  const { orderNumber, paymentDate, setPaymentDate, setOrderNumber, energySimulation } = useProjectStore();
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [rec, setRec] = useState<ProductRecommendation | null>(null);
@@ -50,12 +63,17 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
     message: '',
     severity: 'success',
   });
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'save' | 'report' | null>(null);
+  const [paymentDateInput, setPaymentDateInput] = useState(paymentDate);
 
   const hasEquipment = equipment.length > 0;
   const hasCustomer = !!(customer.name && customer.phone);
   const canGenerate = hasEquipment && hasCustomer;
 
   const { dailyKWh, totalPower } = calculateConsumption(equipment);
+
+  const includePanels = energySimulation.presencePanneaux;
 
   const loadRecommendation = useCallback(async () => {
     if (!canGenerate) {
@@ -65,7 +83,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
     setLoading(true);
     setError(null);
     try {
-      const result = await getRecommendationFromProducts(dailyKWh, totalPower);
+      const result = await getRecommendationFromProducts(dailyKWh, totalPower, includePanels);
       if (result) {
         setRec(result);
       } else {
@@ -77,11 +95,67 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
     } finally {
       setLoading(false);
     }
-  }, [dailyKWh, totalPower, canGenerate]);
+  }, [dailyKWh, totalPower, canGenerate, includePanels]);
 
   useEffect(() => {
     loadRecommendation();
   }, [loadRecommendation]);
+
+  // Generate a new unique order number each time we enter this tab
+  useEffect(() => {
+    setOrderNumber(generateOrderNumber());
+  }, []);
+
+  const openPaymentDialog = (action: 'save' | 'report') => {
+    setPaymentDateInput(paymentDate);
+    setPendingAction(action);
+    setPaymentDialogOpen(true);
+  };
+
+  const handlePaymentConfirm = async () => {
+    setPaymentDate(paymentDateInput);
+    setPaymentDialogOpen(false);
+    if (pendingAction === 'save') {
+      handleSave();
+    } else if (pendingAction === 'report') {
+      // Save the project first (to localStorage), then go to report
+      if (rec) {
+        setSaving(true);
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          const projects = saved ? JSON.parse(saved) : [];
+          
+          const newProject = {
+            id: Date.now(),
+            customer: { ...customer },
+            equipment: [...equipment],
+            recommendation: {
+              panelPower: rec.panelPower,
+              panelCount: rec.panelCount,
+              panelModel: `${rec.panel.outputPowerW}W ${rec.panel.brand}`,
+              batteryCapacity: rec.batteryCapacity,
+              batteryModel: `${rec.battery.name}`,
+              autonomyDays: rec.autonomyDays,
+              inverterPower: rec.inverterPower,
+              inverterModel: rec.inverter ? `${(rec.inverter.outputPowerW || 0) / 1000}kW ${rec.inverter.brand}` : 'N/A',
+              orderNumber,
+              paymentDate: paymentDateInput,
+            },
+            createdAt: new Date().toISOString(),
+          };
+          
+          projects.unshift(newProject);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+        } catch (err) {
+          console.error('Auto-save before report failed:', err);
+        } finally {
+          setSaving(false);
+        }
+      }
+      onNext();
+    }
+    setPendingAction(null);
+  };
 
   const handleSave = () => {
     if (!rec) return;
@@ -104,6 +178,8 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
           autonomyDays: rec.autonomyDays,
           inverterPower: rec.inverterPower,
           inverterModel: rec.inverter ? `${(rec.inverter.outputPowerW || 0) / 1000}kW ${rec.inverter.brand}` : 'N/A',
+          orderNumber,
+          paymentDate,
         },
         createdAt: new Date().toISOString(),
       };
@@ -211,7 +287,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
   if (!rec) return null;
 
   const recommendationCards = [
-    {
+    ...(rec.panelCount > 0 ? [{
       title: 'Panneaux solaires',
       icon: <SolarPowerIcon sx={{ fontSize: 40, color: theme.palette.primary.main }} />,
       specs: [
@@ -224,7 +300,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
       gradient: 'linear-gradient(135deg, #1976d2, #42a5f5)',
       url: rec.panel.url,
       image: rec.panel.imageUrl,
-    },
+    }] : []),
     {
       title: 'Batterie Lithium',
       icon: <BatteryChargingFullIcon sx={{ fontSize: 40, color: theme.palette.secondary.main }} />,
@@ -290,7 +366,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
               variant="contained"
               color="success"
               startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
-              onClick={handleSave}
+              onClick={() => openPaymentDialog('save')}
               disabled={saving}
               sx={{ 
                 borderRadius: 3, 
@@ -304,7 +380,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
             <Button 
               variant="contained" 
               endIcon={<ArrowForwardIcon />}
-              onClick={onNext}
+              onClick={() => openPaymentDialog('report')}
               sx={{ 
                 borderRadius: 3, 
                 textTransform: 'none',
@@ -353,7 +429,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
                           }}
                       image={card.image}
                       alt={card.title}
-                     
+                      
                     />
                   )}
                   <CardContent sx={{ p: 3, flexGrow: 1 }}>
@@ -409,8 +485,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
                 </Typography>
                 <Typography variant="body1" sx={{ opacity: 0.95 }}>
                   Basée sur une consommation journalière calculée de <strong>{dailyKWh.toFixed(2)} kWh</strong> et une puissance de pointe de <strong>{totalPower} Watts</strong>, 
-                  cette installation est conçue pour couvrir 100 % de vos besoins énergétiques avec <strong>{rec.autonomyDays} jour{rec.autonomyDays > 1 ? 's' : ''} d'autonomie</strong>.
-                  {rec.inverter && ' L\'onduleur hybride permet une alimentation solaire et un soutien réseau si nécessaire.'}
+                  cette installation est conçue pour couvrir 100 % de vos besoins énergétiques avec au moins 1 jour d'autonomie.
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 4, mt: 2 }}>
                   <Box>
@@ -430,6 +505,62 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
             </Box>
           </Paper>
         </Stack>
+
+        {/* Payment Date Dialog */}
+        <Dialog 
+          open={paymentDialogOpen} 
+          onClose={() => setPaymentDialogOpen(false)} 
+          maxWidth="xs" 
+          fullWidth
+          slotProps={{
+            paper: {
+              sx: { 
+                borderRadius: 4, 
+                p: 1,
+                boxShadow: theme.shadows[8],
+              }
+            }
+          }}
+        >
+          <DialogTitle sx={{ fontWeight: 600 }}>
+            Conditions de paiement
+          </DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Veuillez sélectionner la date d'échéance de paiement :
+            </Typography>
+            <TextField
+              fullWidth
+              type="date"
+              label="Date de paiement"
+              value={paymentDateInput}
+              onChange={(e) => setPaymentDateInput(e.target.value)}
+              slotProps={{
+                inputLabel: { shrink: true },
+                input: { sx: { borderRadius: 2 } },
+              }}
+            />
+          </DialogContent>
+          <DialogActions sx={{ p: 3, pt: 1 }}>
+            <Button 
+              onClick={() => setPaymentDialogOpen(false)}
+              sx={{ borderRadius: 2, textTransform: 'none' }}
+            >
+              Annuler
+            </Button>
+            <Button 
+              variant="contained" 
+              onClick={handlePaymentConfirm}
+              sx={{ 
+                borderRadius: 2, 
+                textTransform: 'none',
+                px: 4,
+              }}
+            >
+              Confirmer
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         <Snackbar 
           open={snackbar.open} 
