@@ -122,4 +122,5 @@ const EquipmentManager: React.FC = () => {
   );
 };
 
+
 export default EquipmentManager;
