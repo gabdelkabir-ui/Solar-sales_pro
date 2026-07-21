@@ -12,6 +12,11 @@ import {
   Snackbar,
   Alert,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
 } from '@mui/material';
 import SolarPowerIcon from '@mui/icons-material/SolarPower';
 import BatteryChargingFullIcon from '@mui/icons-material/BatteryChargingFull';
@@ -21,8 +26,11 @@ import SaveIcon from '@mui/icons-material/Save';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { SelectedEquipment, CustomerInfo, ProductRecommendation } from '../types';
+import { useProjectStore } from '../hooks/useProjectStore';
 import { calculateConsumption } from '../utils/solarCalculations';
 import { getRecommendationFromProducts } from '../utils/productsApi';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 interface RecommendationViewProps {
   equipment: SelectedEquipment[];
@@ -31,7 +39,12 @@ interface RecommendationViewProps {
   onSaveSuccess: () => void;
 }
 
+const generateOrderNumber = () => {
+  return `BC-${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
+};
+
 const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, customer, onNext, onSaveSuccess }) => {
+  const { orderNumber, paymentDate, setPaymentDate, setOrderNumber, energySimulation } = useProjectStore();
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [rec, setRec] = useState<ProductRecommendation | null>(null);
@@ -41,12 +54,17 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
     message: '',
     severity: 'success',
   });
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'save' | 'report' | null>(null);
+  const [paymentDateInput, setPaymentDateInput] = useState(paymentDate);
 
   const hasEquipment = equipment.length > 0;
   const hasCustomer = !!(customer.name && customer.phone);
   const canGenerate = hasEquipment && hasCustomer;
 
   const { dailyKWh, totalPower } = calculateConsumption(equipment);
+
+  const includePanels = energySimulation.presencePanneaux;
 
   const loadRecommendation = useCallback(async () => {
     if (!canGenerate) {
@@ -56,7 +74,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
     setLoading(true);
     setError(null);
     try {
-      const result = await getRecommendationFromProducts(dailyKWh, totalPower);
+      const result = await getRecommendationFromProducts(dailyKWh, totalPower, includePanels);
       if (result) {
         setRec(result);
       } else {
@@ -68,32 +86,94 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
     } finally {
       setLoading(false);
     }
-  }, [dailyKWh, totalPower, canGenerate]);
+  }, [dailyKWh, totalPower, canGenerate, includePanels]);
 
   useEffect(() => {
     loadRecommendation();
   }, [loadRecommendation]);
 
-  const handleSave = async () => {
-    if (!rec) return;
-    setSaving(true);
-    try {
-      const response = await fetch(`http://${window.location.hostname}:5000/api/projects`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customer,
-          equipment,
-          recommendation: {
+  // Generate a new unique order number each time we enter this tab
+  useEffect(() => {
+    setOrderNumber(generateOrderNumber());
+  }, []);
+
+  const openPaymentDialog = (action: 'save' | 'report') => {
+    setPaymentDateInput(paymentDate);
+    setPendingAction(action);
+    setPaymentDialogOpen(true);
+  };
+
+  const handlePaymentConfirm = async () => {
+    setPaymentDate(paymentDateInput);
+    setPaymentDialogOpen(false);
+    if (pendingAction === 'save') {
+      handleSave();
+    } else if (pendingAction === 'report') {
+      // Save the project first, then go to report
+      if (rec) {
+        setSaving(true);
+        try {
+          const recommendation: Record<string, any> = {
             panelPower: rec.panelPower,
             panelCount: rec.panelCount,
             panelModel: `${rec.panel.outputPowerW}W ${rec.panel.brand}`,
             batteryCapacity: rec.batteryCapacity,
             batteryModel: `${rec.battery.name}`,
             autonomyDays: rec.autonomyDays,
-            inverterPower: rec.inverterPower,
-            inverterModel: `${(rec.inverter.outputPowerW || 0) / 1000}kW ${rec.inverter.brand}`,
-          },
+            orderNumber,
+            paymentDate: paymentDateInput,
+          };
+          if (rec.inverter) {
+            recommendation.inverterPower = rec.inverterPower;
+            recommendation.inverterModel = `${(rec.inverter.outputPowerW || 0) / 1000}kW ${rec.inverter.brand}`;
+          }
+          await fetch(`http://${window.location.hostname}:5000/api/projects`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              customer,
+              equipment,
+              recommendation,
+              energySimulation,
+            }),
+          });
+        } catch (err) {
+          console.error('Auto-save before report failed:', err);
+        } finally {
+          setSaving(false);
+        }
+      }
+      onNext();
+    }
+    setPendingAction(null);
+  };
+
+  const handleSave = async () => {
+    if (!rec) return;
+    setSaving(true);
+    try {
+      const recommendation: Record<string, any> = {
+        panelPower: rec.panelPower,
+        panelCount: rec.panelCount,
+        panelModel: `${rec.panel.outputPowerW}W ${rec.panel.brand}`,
+        batteryCapacity: rec.batteryCapacity,
+        batteryModel: `${rec.battery.name}`,
+        autonomyDays: rec.autonomyDays,
+        orderNumber,
+        paymentDate,
+      };
+      if (rec.inverter) {
+        recommendation.inverterPower = rec.inverterPower;
+        recommendation.inverterModel = `${(rec.inverter.outputPowerW || 0) / 1000}kW ${rec.inverter.brand}`;
+      }
+      const response = await fetch(`http://${window.location.hostname}:5000/api/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer,
+          equipment,
+          recommendation,
+          energySimulation,
         }),
       });
 
@@ -169,7 +249,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
   if (!rec) return null;
 
   const recommendationCards = [
-    {
+    ...(rec.panelCount > 0 ? [{
       title: 'Panneaux solaires',
       icon: <SolarPowerIcon sx={{ fontSize: 40, color: 'primary.main' }} />,
       specs: [
@@ -180,7 +260,8 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
       ],
       color: 'primary.main',
       url: rec.panel.url,
-    },
+      imageUrl: rec.panel.imageUrl,
+    }] : []),
     {
       title: 'Batterie Lithium',
       icon: <BatteryChargingFullIcon sx={{ fontSize: 40, color: 'secondary.main' }} />,
@@ -192,8 +273,9 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
       ],
       color: 'secondary.main',
       url: rec.battery.url,
+      imageUrl: rec.battery.imageUrl,
     },
-    {
+    ...(rec.inverter ? [{
       title: 'Onduleur Hybride',
       icon: <BoltIcon sx={{ fontSize: 40, color: '#fbc02d' }} />,
       specs: [
@@ -204,7 +286,8 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
       ],
       color: '#fbc02d',
       url: rec.inverter.url,
-    }
+      imageUrl: rec.inverter.imageUrl,
+    }] : []),
   ];
 
   return (
@@ -216,7 +299,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
             variant="contained"
             color="success"
             startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
-            onClick={handleSave}
+            onClick={() => openPaymentDialog('save')}
             disabled={saving}
           >
             Enregistrer
@@ -224,7 +307,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
           <Button 
             variant="contained" 
             endIcon={<ArrowForwardIcon />}
-            onClick={onNext}
+            onClick={() => openPaymentDialog('report')}
           >
             Générer le rapport
           </Button>
@@ -232,11 +315,29 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
       </Box>
 
       <Stack spacing={3}>
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr 1fr' }, gap: 3 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: rec.inverter ? '1fr 1fr 1fr' : '1fr 1fr' }, gap: 3 }}>
           {recommendationCards.map((card, index) => (
             <Card key={index} sx={{ height: '100%', position: 'relative', display: 'flex', flexDirection: 'column' }}>
               <Box sx={{ bgcolor: card.color, height: 4, width: '100%' }} />
               <CardContent sx={{ p: 3, flexGrow: 1 }}>
+                {card.imageUrl && (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2, height: 120 }}>
+                    <Box
+                      component="img"
+                      src={card.imageUrl}
+                      alt={card.title}
+                      sx={{
+                        maxHeight: '100%',
+                        maxWidth: '100%',
+                        objectFit: 'contain',
+                        borderRadius: 1,
+                      }}
+                      onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  </Box>
+                )}
                 <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
                   {card.icon}
                 </Box>
@@ -276,11 +377,37 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
           <Typography variant="h6" gutterBottom>Analyse de dimensionnement experte</Typography>
           <Typography variant="body1">
             Basée sur une consommation journalière calculée de <strong>{dailyKWh.toFixed(2)} kWh</strong> et une puissance de pointe de <strong>{totalPower} Watts</strong>, 
-            cette installation est conçue pour couvrir 100 % de vos besoins énergétiques avec au moins 1 jour d'autonomie. 
-            L'onduleur hybride permet une alimentation solaire et un soutien réseau si nécessaire.
+            cette installation est conçue pour couvrir 100 % de vos besoins énergétiques avec au moins 1 jour d'autonomie.
           </Typography>
         </Paper>
       </Stack>
+
+      {/* Payment Date Dialog */}
+      <Dialog open={paymentDialogOpen} onClose={() => setPaymentDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Conditions de paiement</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Veuillez sélectionner la date d'échéance de paiement :
+          </Typography>
+          <TextField
+            fullWidth
+            type="date"
+            label="Date de paiement"
+            value={paymentDateInput}
+            onChange={(e) => setPaymentDateInput(e.target.value)}
+            slotProps={{
+              inputLabel: { shrink: true },
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPaymentDialogOpen(false)}>Annuler</Button>
+          <Button variant="contained" onClick={handlePaymentConfirm}>
+            Confirmer
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Snackbar 
         open={snackbar.open} 
         autoHideDuration={4000} 

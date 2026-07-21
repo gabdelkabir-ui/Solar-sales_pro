@@ -10,7 +10,6 @@ import {
   TableHead,
   TableRow,
   Button,
-  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -25,12 +24,10 @@ import {
   CircularProgress,
   Chip,
   Stack,
-  Tooltip,
   Checkbox,
   FormControlLabel,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import { Product } from '../types';
@@ -42,18 +39,20 @@ const CATEGORY_LABELS: Record<string, string> = {
   panel: 'Panneau solaire',
   battery: 'Batterie',
   inverter: 'Onduleur',
+  other: 'Autre',
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
   panel: '#1976d2',
   battery: '#2e7d32',
   inverter: '#f57c00',
+  other: '#9c27b0',
 };
 
 interface FormData {
   name: string;
   slug: string;
-  category: 'panel' | 'battery' | 'inverter';
+  category: 'panel' | 'battery' | 'inverter' | 'other';
   brand: string;
   outputPowerW: string;
   capacityWh: string;
@@ -109,18 +108,6 @@ const ProductsManager: React.FC = () => {
       setSnackbar({ open: true, message: 'Erreur lors de l\'ajout des produits', severity: 'error' });
     }
     setSeeding(false);
-  };
-
-  const handleDelete = async (id: number) => {
-    if (!confirm('Supprimer ce produit ?')) return;
-    try {
-      const res = await fetch(`${API_BASE}/products/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Delete failed');
-      setSnackbar({ open: true, message: 'Produit supprimé avec succès', severity: 'success' });
-      loadProducts();
-    } catch {
-      setSnackbar({ open: true, message: 'Erreur lors de la suppression', severity: 'error' });
-    }
   };
 
   const handleCreate = async () => {
@@ -180,7 +167,7 @@ const ProductsManager: React.FC = () => {
 
   const formatPrice = (price: number | null) => {
     if (price === null || price === undefined) return '-';
-    return new Intl.NumberFormat('fr-FR').format(price) + ' MAD';
+    return new Intl.NumberFormat('fr-FR').format(price) + ' €';
   };
 
   return (
@@ -246,8 +233,7 @@ const ProductsManager: React.FC = () => {
                 <TableCell align="center"><strong>Puissance (W)</strong></TableCell>
                 <TableCell align="center"><strong>Capacité (Wh)</strong></TableCell>
                 <TableCell align="center"><strong>Extensible</strong></TableCell>
-                <TableCell align="right"><strong>Prix (MAD)</strong></TableCell>
-                <TableCell align="center"><strong>Actions</strong></TableCell>
+                <TableCell align="right"><strong>Prix (€)</strong></TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -286,13 +272,6 @@ const ProductsManager: React.FC = () => {
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 500 }}>
                     {formatPrice(product.priceMad)}
-                  </TableCell>
-                  <TableCell align="center">
-                    <Tooltip title="Supprimer">
-                      <IconButton size="small" color="error" onClick={() => handleDelete(product.id)}>
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))}
@@ -334,6 +313,7 @@ const ProductsManager: React.FC = () => {
                   <MenuItem value="panel">Panneau solaire</MenuItem>
                   <MenuItem value="battery">Batterie</MenuItem>
                   <MenuItem value="inverter">Onduleur</MenuItem>
+                  <MenuItem value="other">Autre</MenuItem>
                 </Select>
               </FormControl>
               <TextField
@@ -343,7 +323,7 @@ const ProductsManager: React.FC = () => {
                 size="small"
               />
               <TextField
-                label="Prix (MAD)"
+                label="Prix € "
                 type="number"
                 value={form.priceMad}
                 onChange={(e) => handleFormChange('priceMad', e.target.value)}

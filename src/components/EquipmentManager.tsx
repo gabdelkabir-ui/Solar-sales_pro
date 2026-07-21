@@ -28,12 +28,11 @@ import {
   Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import { Equipment } from '../types';
-import { fetchEquipment, seedEquipment, createEquipment, updateEquipment, deleteEquipment } from '../utils/equipmentApi';
+import { fetchEquipment, seedEquipment, createEquipment, updateEquipment } from '../utils/equipmentApi';
 import { getEquipmentIcon } from '../utils/equipmentIcons';
 
 const CATEGORIES = [
@@ -113,17 +112,6 @@ const EquipmentManager: React.FC = () => {
       setSnackbar({ open: true, message: 'Erreur lors de l\'ajout des équipements', severity: 'error' });
     }
     setSeeding(false);
-  };
-
-  const handleDelete = async (id: number) => {
-    if (!confirm('Supprimer cet équipement ?')) return;
-    const ok = await deleteEquipment(id);
-    if (ok) {
-      setSnackbar({ open: true, message: 'Équipement supprimé avec succès', severity: 'success' });
-      loadItems();
-    } else {
-      setSnackbar({ open: true, message: 'Erreur lors de la suppression', severity: 'error' });
-    }
   };
 
   const handleEdit = (item: EquipmentItem) => {
@@ -280,11 +268,6 @@ const EquipmentManager: React.FC = () => {
                       <Tooltip title="Modifier">
                         <IconButton size="small" color="primary" onClick={() => handleEdit(item)}>
                           <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Supprimer">
-                        <IconButton size="small" color="error" onClick={() => handleDelete(item.id)}>
-                          <DeleteIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                     </Box>

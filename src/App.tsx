@@ -30,6 +30,10 @@ import ReportView from './components/ReportView';
 import SavedProjects from './components/SavedProjects';
 import ProductsManager from './components/ProductsManager';
 import EquipmentManager from './components/EquipmentManager';
+import EnergySimulation from './components/EnergySimulation';
+import OtherProductsSale from './components/OtherProductsSale';
+import SaleReportView from './components/SaleReportView';
+import { CustomerInfo, SelectedEquipment } from './types';
 import { useProjectStore } from './hooks/useProjectStore';
 
 interface TabPanelProps {
@@ -61,16 +65,23 @@ function TabPanel(props: TabPanelProps) {
 const tabConfigs = [
   { label: 'Client', key: 'customer', adminOnly: false },
   { label: 'Calculatrice', key: 'calculator', adminOnly: false },
+  { label: 'Simulation Énergétique', key: 'energy', adminOnly: false },
   { label: 'Tableau de bord', key: 'dashboard', adminOnly: false },
   { label: 'Recommandation', key: 'recommendation', adminOnly: false },
+  { label: 'Ventes produits', key: 'other-sales', adminOnly: false },
   { label: 'Produits', key: 'products', adminOnly: true },
   { label: 'Équipements', key: 'equipment', adminOnly: true },
   { label: 'Projets', key: 'projects', adminOnly: true },
-  { label: 'Rapport', key: 'report', adminOnly: false },
 ];
 
 function App() {
   const [activeTab, setActiveTab] = useState(0);
+  const [showReport, setShowReport] = useState(false);
+  const [reportType, setReportType] = useState<'bon-de-commande' | 'facture'>('bon-de-commande');
+  const [reportProjectId, setReportProjectId] = useState<number | null>(null);
+  const [reportData, setReportData] = useState<{ orderNumber: string; paymentDate: string; customer: CustomerInfo; equipment: SelectedEquipment[] } | null>(null);
+  const [showSaleReport, setShowSaleReport] = useState(false);
+  const [saleReportData, setSaleReportData] = useState<{ sale: any; type: 'bon-de-commande' | 'facture' } | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminDialogOpen, setAdminDialogOpen] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
@@ -113,6 +124,68 @@ function App() {
     }
   };
 
+  const handleGenerateReportFromProject = async (projectId: number, type: 'bon-de-commande' | 'facture' = 'bon-de-commande') => {
+    try {
+      const response = await fetch(`http://${window.location.hostname}:5000/api/projects/${projectId}`);
+      if (!response.ok) throw new Error('Erreur lors du chargement du projet');
+      const project = await response.json();
+      store.loadProject({
+        customer: project.customer,
+        equipment: project.equipment || [],
+        orderNumber: project.orderNumber || undefined,
+        paymentDate: project.paymentDate || undefined,
+        recommendation: project.recommendation || undefined,
+      });
+      setReportData({
+        orderNumber: project.orderNumber || '',
+        paymentDate: project.paymentDate || '',
+        customer: project.customer,
+        equipment: project.equipment || [],
+      });
+      setReportProjectId(projectId);
+      setReportType(type);
+      setShowReport(true);
+    } catch (err) {
+      console.error('Failed to load project for report:', err);
+      alert('Erreur lors du chargement du projet pour générer le rapport.');
+    }
+  };
+
+  const handleGenerateInvoiceFromProject = async (projectId: number) => {
+    await handleGenerateReportFromProject(projectId, 'facture');
+  };
+
+  const handleViewSimulation = async (projectId: number) => {
+    try {
+      const response = await fetch(`http://${window.location.hostname}:5000/api/projects/${projectId}`);
+      if (!response.ok) throw new Error('Erreur lors du chargement du projet');
+      const project = await response.json();
+      if (project.energySimulation) {
+        store.loadProject({
+          customer: project.customer,
+          equipment: project.equipment || [],
+          orderNumber: project.orderNumber || undefined,
+          paymentDate: project.paymentDate || undefined,
+          recommendation: project.recommendation || undefined,
+          energySimulation: project.energySimulation,
+        });
+      } else {
+        // Load customer data but keep existing simulation
+        store.loadProject({
+          customer: project.customer,
+          equipment: project.equipment || [],
+          orderNumber: project.orderNumber || undefined,
+          paymentDate: project.paymentDate || undefined,
+          recommendation: project.recommendation || undefined,
+        });
+      }
+      setActiveTab(2); // Go to Energy Simulation tab
+    } catch (err) {
+      console.error('Failed to load project for simulation:', err);
+      alert('Erreur lors du chargement du projet pour la simulation.');
+    }
+  };
+
   const handleAdminDialogClose = () => {
     setAdminDialogOpen(false);
     setAdminPassword('');
@@ -140,11 +213,20 @@ function App() {
             onNext={() => setActiveTab(2)}
           />
         );
+      case 'energy':
+        return (
+          <EnergySimulation 
+            energySimulation={store.energySimulation}
+            setEnergySimulation={store.setEnergySimulation}
+            onNext={() => setActiveTab(3)}
+            onBack={() => setActiveTab(1)}
+          />
+        );
       case 'dashboard':
         return (
           <Dashboard 
             equipment={store.equipment}
-            onNext={() => setActiveTab(3)}
+            onNext={() => setActiveTab(4)}
           />
         );
       case 'recommendation':
@@ -152,7 +234,10 @@ function App() {
           <RecommendationView 
             equipment={store.equipment}
             customer={store.customer}
-            onNext={() => setActiveTab(7)}
+            onNext={() => {
+              setReportProjectId(null);
+              setShowReport(true);
+            }}
             onSaveSuccess={() => {
               store.resetProject();
               setActiveTab(0);
@@ -163,13 +248,21 @@ function App() {
         return <ProductsManager />;
       case 'equipment':
         return <EquipmentManager />;
-      case 'projects':
-        return <SavedProjects />;
-      case 'report':
+      case 'other-sales':
         return (
-          <ReportView 
-            customer={store.customer}
-            equipment={store.equipment}
+          <OtherProductsSale
+            onGenerateReport={(sale, type) => {
+              setSaleReportData({ sale, type });
+              setShowSaleReport(true);
+            }}
+          />
+        );
+      case 'projects':
+        return (
+          <SavedProjects 
+            onGenerateReport={(id) => handleGenerateReportFromProject(id, 'bon-de-commande')}
+            onGenerateInvoice={handleGenerateInvoiceFromProject}
+            onViewSimulation={handleViewSimulation}
           />
         );
       default:
@@ -209,29 +302,54 @@ function App() {
           </Toolbar>
         </AppBar>
 
-        <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-          <Paper sx={{ width: '100%', mb: 2 }}>
-            <Tabs 
-              value={activeTab} 
-              onChange={handleTabChange} 
-              variant="scrollable"
-              scrollButtons="auto"
-              indicatorColor="primary"
-              textColor="primary"
-              aria-label="solar app tabs"
-            >
-              {visibleTabs.map((tab) => (
-                <Tab key={tab.key} label={tab.label} />
-              ))}
-            </Tabs>
-          </Paper>
+          {showSaleReport && saleReportData ? (
+            <SaleReportView
+              sale={saleReportData.sale}
+              reportType={saleReportData.type}
+              onBack={() => {
+                setShowSaleReport(false);
+                setSaleReportData(null);
+              }}
+            />
+          ) : showReport ? (
+            <ReportView
+              key={reportProjectId || Date.now()}
+              customer={reportData?.customer || store.customer}
+              equipment={reportData?.equipment || store.equipment}
+              onBack={() => {
+                setShowReport(false);
+                setReportProjectId(null);
+                setReportData(null);
+              }}
+              overrideOrderNumber={reportData?.orderNumber}
+              overridePaymentDate={reportData?.paymentDate}
+              reportType={reportType}
+            />
+          ) : (
+            <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+              <Paper sx={{ width: '100%', mb: 2 }}>
+                <Tabs 
+                  value={activeTab} 
+                  onChange={handleTabChange} 
+                  variant="scrollable"
+                  scrollButtons="auto"
+                  indicatorColor="primary"
+                  textColor="primary"
+                  aria-label="solar app tabs"
+                >
+                  {visibleTabs.map((tab) => (
+                    <Tab key={tab.key} label={tab.label} />
+                  ))}
+                </Tabs>
+              </Paper>
 
-          {visibleTabs.map((tab, index) => (
-            <TabPanel key={tab.key} value={activeTab} index={index}>
-              {renderTabPanel(tab)}
-            </TabPanel>
-          ))}
-        </Container>
+              {visibleTabs.map((tab, index) => (
+                <TabPanel key={tab.key} value={activeTab} index={index}>
+                  {renderTabPanel(tab)}
+                </TabPanel>
+              ))}
+            </Container>
+          )}
       </Box>
 
       {/* Admin Password Dialog */}

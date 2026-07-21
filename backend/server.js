@@ -22,9 +22,35 @@ const ensureTables = async () => {
           CustomerInfo NVARCHAR(MAX) NOT NULL,
           Equipment NVARCHAR(MAX) NOT NULL,
           Recommendation NVARCHAR(MAX) NOT NULL,
+          OrderNumber NVARCHAR(50) NULL,
+          PaymentDate DATE NULL,
           CreatedAt DATETIME2 DEFAULT GETDATE()
         );
         PRINT 'Table Projects created successfully';
+      END
+    `);
+    // Add OrderNumber column if it doesn't exist (for existing databases)
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Projects') AND name = 'OrderNumber')
+      BEGIN
+        ALTER TABLE Projects ADD OrderNumber NVARCHAR(50) NULL;
+        PRINT 'Column OrderNumber added to Projects table';
+      END
+    `);
+    // Add PaymentDate column if it doesn't exist (for existing databases)
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Projects') AND name = 'PaymentDate')
+      BEGIN
+        ALTER TABLE Projects ADD PaymentDate DATE NULL;
+        PRINT 'Column PaymentDate added to Projects table';
+      END
+    `);
+    // Add EnergySimulation column if it doesn't exist (for existing databases)
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Projects') AND name = 'EnergySimulation')
+      BEGIN
+        ALTER TABLE Projects ADD EnergySimulation NVARCHAR(MAX) NULL;
+        PRINT 'Column EnergySimulation added to Projects table';
       END
     `);
     // Clients table
@@ -57,7 +83,7 @@ const ensureTables = async () => {
           Expandable BIT DEFAULT 0,
           Description NVARCHAR(MAX) NULL,
           KeyFeatures NVARCHAR(MAX) NULL,
-          PriceMad INT NULL,
+          PriceMad FLOAT NULL,
           Url NVARCHAR(MAX) NULL,
           ImageUrl NVARCHAR(MAX) NULL,
           IsActive BIT DEFAULT 1,
@@ -85,7 +111,22 @@ const ensureTables = async () => {
         PRINT 'Table EquipmentItems created successfully';
       END
     `);
-    console.log('Tables "Projects", "Clients", "Products", and "EquipmentItems" are ready');
+    // OtherSales table
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'OtherSales')
+      BEGIN
+        CREATE TABLE OtherSales (
+          Id INT IDENTITY(1,1) PRIMARY KEY,
+          CustomerInfo NVARCHAR(MAX) NOT NULL,
+          Products NVARCHAR(MAX) NOT NULL,
+          OrderNumber NVARCHAR(50) NULL,
+          PaymentDate DATE NULL,
+          CreatedAt DATETIME2 DEFAULT GETDATE()
+        );
+        PRINT 'Table OtherSales created successfully';
+      END
+    `);
+    console.log('Tables "Projects", "Clients", "Products", "EquipmentItems", and "OtherSales" are ready');
   } catch (err) {
     console.error('Error ensuring tables exist:', err);
   }
@@ -94,25 +135,34 @@ const ensureTables = async () => {
 // POST /api/projects — Save a new project
 app.post('/api/projects', async (req, res) => {
   try {
-    const { customer, equipment, recommendation } = req.body;
+    const { customer, equipment, recommendation, energySimulation } = req.body;
 
     if (!customer || !equipment) {
       return res.status(400).json({ error: 'customer and equipment are required' });
     }
+
+    const orderNumber = recommendation?.orderNumber || null;
+    const paymentDate = recommendation?.paymentDate || null;
+    const energySimulationJson = energySimulation ? JSON.stringify(energySimulation) : null;
 
     const pool = await poolPromise;
     const result = await pool.request()
       .input('CustomerInfo', sql.NVarChar(sql.MAX), JSON.stringify(customer))
       .input('Equipment', sql.NVarChar(sql.MAX), JSON.stringify(equipment))
       .input('Recommendation', sql.NVarChar(sql.MAX), JSON.stringify(recommendation || {}))
+      .input('OrderNumber', sql.NVarChar(50), orderNumber)
+      .input('PaymentDate', sql.Date, paymentDate)
+      .input('EnergySimulation', sql.NVarChar(sql.MAX), energySimulationJson)
       .query(`
-        INSERT INTO Projects (CustomerInfo, Equipment, Recommendation)
-        OUTPUT INSERTED.Id
-        VALUES (@CustomerInfo, @Equipment, @Recommendation)
+        INSERT INTO Projects (CustomerInfo, Equipment, Recommendation, OrderNumber, PaymentDate, EnergySimulation)
+        OUTPUT INSERTED.Id, INSERTED.OrderNumber, INSERTED.PaymentDate
+        VALUES (@CustomerInfo, @Equipment, @Recommendation, @OrderNumber, @PaymentDate, @EnergySimulation)
       `);
 
     const newId = result.recordset[0].Id;
-    res.status(201).json({ id: newId, message: 'Projet enregistré avec succès' });
+    const savedOrderNumber = result.recordset[0].OrderNumber;
+    const savedPaymentDate = result.recordset[0].PaymentDate;
+    res.status(201).json({ id: newId, orderNumber: savedOrderNumber, paymentDate: savedPaymentDate, message: 'Projet enregistré avec succès' });
   } catch (err) {
     console.error('Error saving project:', err);
     res.status(500).json({ error: 'Erreur lors de l\'enregistrement du projet' });
@@ -124,7 +174,7 @@ app.get('/api/projects', async (req, res) => {
   try {
     const pool = await poolPromise;
     const result = await pool.request().query(`
-      SELECT Id, CustomerInfo, CreatedAt
+      SELECT Id, CustomerInfo, OrderNumber, PaymentDate, EnergySimulation, CreatedAt
       FROM Projects
       ORDER BY CreatedAt DESC
     `);
@@ -134,6 +184,9 @@ app.get('/api/projects', async (req, res) => {
       return {
         id: row.Id,
         customer,
+        orderNumber: row.OrderNumber,
+        paymentDate: row.PaymentDate,
+        energySimulation: row.EnergySimulation ? JSON.parse(row.EnergySimulation) : null,
         createdAt: row.CreatedAt,
       };
     });
@@ -152,7 +205,7 @@ app.get('/api/projects/:id', async (req, res) => {
     const result = await pool.request()
       .input('Id', sql.Int, parseInt(req.params.id))
       .query(`
-        SELECT Id, CustomerInfo, Equipment, Recommendation, CreatedAt
+        SELECT Id, CustomerInfo, Equipment, Recommendation, OrderNumber, PaymentDate, EnergySimulation, CreatedAt
         FROM Projects
         WHERE Id = @Id
       `);
@@ -167,6 +220,9 @@ app.get('/api/projects/:id', async (req, res) => {
       customer: JSON.parse(row.CustomerInfo),
       equipment: JSON.parse(row.Equipment),
       recommendation: JSON.parse(row.Recommendation),
+      orderNumber: row.OrderNumber,
+      paymentDate: row.PaymentDate,
+      energySimulation: row.EnergySimulation ? JSON.parse(row.EnergySimulation) : null,
       createdAt: row.CreatedAt,
     };
 
@@ -228,29 +284,6 @@ app.post('/api/clients/import', async (req, res) => {
   } catch (err) {
     console.error('Error importing clients:', err);
     res.status(500).json({ error: 'Erreur lors de l\'import des clients' });
-  }
-});
-
-// DELETE /api/projects/:id — Delete a project
-app.delete('/api/projects/:id', async (req, res) => {
-  try {
-    const pool = await poolPromise;
-    const result = await pool.request()
-      .input('Id', sql.Int, parseInt(req.params.id))
-      .query(`
-        DELETE FROM Projects
-        OUTPUT DELETED.Id
-        WHERE Id = @Id
-      `);
-
-    if (!result.recordset || result.recordset.length === 0) {
-      return res.status(404).json({ error: 'Projet non trouvé' });
-    }
-
-    res.json({ message: 'Projet supprimé avec succès' });
-  } catch (err) {
-    console.error('Error deleting project:', err);
-    res.status(500).json({ error: 'Erreur lors de la suppression du projet' });
   }
 });
 
@@ -371,7 +404,7 @@ app.post('/api/products', async (req, res) => {
       .input('Expandable', sql.Bit, expandable ? 1 : 0)
       .input('Description', sql.NVarChar(sql.MAX), description || null)
       .input('KeyFeatures', sql.NVarChar(sql.MAX), keyFeatures ? JSON.stringify(keyFeatures) : null)
-      .input('PriceMad', sql.Int, priceMad || null)
+      .input('PriceMad', sql.Float, priceMad || null)
       .input('Url', sql.NVarChar(sql.MAX), url || null)
       .input('ImageUrl', sql.NVarChar(sql.MAX), imageUrl || null)
       .query(`
@@ -392,29 +425,6 @@ app.post('/api/products', async (req, res) => {
   }
 });
 
-// DELETE /api/products/:id — Delete a product
-app.delete('/api/products/:id', async (req, res) => {
-  try {
-    const pool = await poolPromise;
-    const result = await pool.request()
-      .input('Id', sql.Int, parseInt(req.params.id))
-      .query(`
-        DELETE FROM Products
-        WHERE Id = @Id;
-        SELECT @@ROWCOUNT AS DeletedCount;
-      `);
-
-    if (!result.recordset || result.recordset.length === 0 || result.recordset[0].DeletedCount === 0) {
-      return res.status(404).json({ error: 'Produit non trouvé' });
-    }
-
-    res.json({ message: 'Produit supprimé avec succès' });
-  } catch (err) {
-    console.error('Error deleting product:', err);
-    res.status(500).json({ error: 'Erreur lors de la suppression du produit' });
-  }
-});
-
 // POST /api/products/seed — Seed initial products for recommendation engine
 app.post('/api/products/seed', async (req, res) => {
   try {
@@ -426,226 +436,107 @@ app.post('/api/products/seed', async (req, res) => {
       return res.json({ message: 'Des produits existent déjà, aucun seed effectué', count: 0 });
     }
 
-    const products = [
-      // ========== SOLAR PANELS (category: panel) ==========
-      {
-        name: 'EcoFlow 110W Portable Solar Panel',
-        slug: '110w-portable-solar-panel',
-        category: 'panel',
-        brand: 'EcoFlow',
-        capacityWh: null,
-        outputPowerW: 110,
-        expandable: false,
-        description: 'Foldable portable solar panel with high efficiency.',
-        keyFeatures: JSON.stringify(['110W output', '23% conversion rate', 'IP68 waterproof', 'Foldable monobloc design']),
-        priceMad: 1995,
-        url: 'https://www.easypower.ma/en/shop/pso-000006-110w-portable-solar-panel-81',
-        imageUrl: '',
-        isActive: 1,
-      },
-      {
-        name: 'EcoFlow 160W Portable Solar Panel',
-        slug: '160w-portable-solar-panel',
-        category: 'panel',
-        brand: 'EcoFlow',
-        capacityWh: null,
-        outputPowerW: 160,
-        expandable: false,
-        description: 'Lightweight foldable solar panel (7kg).',
-        keyFeatures: JSON.stringify(['160W output', 'Portable and foldable', 'High efficiency']),
-        priceMad: 3150,
-        url: 'https://www.easypower.ma/en/shop/pso-000007-160w-portable-solar-panel-85',
-        imageUrl: '',
-        isActive: 1,
-      },
-      {
-        name: 'EcoFlow 400W Portable Solar Panel',
-        slug: '400w-portable-solar-panel',
-        category: 'panel',
-        brand: 'EcoFlow',
-        capacityWh: null,
-        outputPowerW: 400,
-        expandable: false,
-        description: 'High-power foldable solar panel for home and off-grid use.',
-        keyFeatures: JSON.stringify(['400W output', 'Highly efficient', 'Foldable design']),
-        priceMad: 8000,
-        url: 'https://www.easypower.ma/en/shop/pso-000008-400w-portable-solar-panel-87',
-        imageUrl: '',
-        isActive: 1,
-      },
-      {
-        name: 'EcoFlow 100W Rigid Solar Panel',
-        slug: '100w-rigid-solar-panel',
-        category: 'panel',
-        brand: 'EcoFlow',
-        capacityWh: null,
-        outputPowerW: 100,
-        expandable: false,
-        description: 'All-black rigid solar panel for permanent installation.',
-        keyFeatures: JSON.stringify(['100W output', '23% conversion rate', 'IP68 waterproof', '5-year warranty']),
-        priceMad: 1029,
-        url: 'https://www.easypower.ma/en/shop/pso-000009-100w-rigid-solar-panel-83',
-        imageUrl: '',
-        isActive: 1,
-      },
+   const products = [
+  // ========== SOLAR PANELS (category: panel) ==========
+  {
+    name: 'BLUETTI 400W Portable Solar Panel',
+    slug: '400w-portable-solar-panel',
+    category: 'panel',
+    brand: 'BLUETTI',
+    capacityWh: null,
+    outputPowerW: 400,
+    expandable: false,
+    description: 'Foldable 400W portable solar panel designed for BLUETTI portable power stations and energy storage systems.',
+    keyFeatures: JSON.stringify([
+      '400W output',
+      'Foldable design',
+      'Portable',
+      'High conversion efficiency',
+      'Compatible with BLUETTI power stations',
+      'Outdoor use'
+    ]),
+    priceMad: 583.33,
+    url: 'https://fr.ecoflow.com/products/400w-lightweight-portable-solar-panel?variant=51300297998683',
+    imageUrl: 'https://www.easypower.ma/web/image/product.product/87/image_1024/%5BPSO-000008%5D%20400W%20PORTABLE%20SOLAR%20PANEL?unique=b565004',
+    isActive: 1,
+  },
 
-      // ========== POWER STATIONS & BATTERIES (category: battery) ==========
-      {
-        name: 'EcoFlow DELTA Pro',
-        slug: 'delta-pro',
-        category: 'battery',
-        brand: 'EcoFlow',
-        capacityWh: 3600,
-        outputPowerW: 3600,
-        expandable: true,
-        description: 'Portable home battery with up to 25 kWh expandable capacity. Integrates with Smart Home Panel.',
-        keyFeatures: JSON.stringify(['3600W output (4500W with X-Boost)', 'Expandable to 25 kWh', 'Fastest charging in the world', 'EV charging compatible', 'Smart Home Panel integration']),
-        priceMad: 37800,
-        url: 'https://www.easypower.ma/en/shop/sel-000011-delta-pro-int-75',
-        imageUrl: '',
-        isActive: 1,
-      },
-      {
-        name: 'EcoFlow DELTA 2',
-        slug: 'delta-2',
-        category: 'battery',
-        brand: 'EcoFlow',
-        capacityWh: 1024,
-        outputPowerW: 1800,
-        expandable: true,
-        description: 'Expandable portable power station from 1 kWh to 3 kWh.',
-        keyFeatures: JSON.stringify(['1 kWh base capacity', 'Expandable to 3 kWh', '1800W output', 'Fast AC charging', 'App control']),
-        priceMad: 10500,
-        url: 'https://www.easypower.ma/en/shop/category/power-stations-ecoflow-ecoflow-delta-88',
-        imageUrl: '',
-        isActive: 1,
-      },
-      {
-        name: 'EcoFlow DELTA 2 Max',
-        slug: 'delta-2-max',
-        category: 'battery',
-        brand: 'EcoFlow',
-        capacityWh: 2048,
-        outputPowerW: 2400,
-        expandable: true,
-        description: 'Expandable from 2 kWh to 6 kWh. Ideal for home backup and outdoor use.',
-        keyFeatures: JSON.stringify(['2 kWh base capacity', 'Expandable to 6 kWh', '2400W output', 'Fast solar charging', 'App control']),
-        priceMad: 17010,
-        url: 'https://www.easypower.ma/en/shop/sel-000010-delta-2-max-100',
-        imageUrl: '',
-        isActive: 1,
-      },
-      {
-        name: 'EcoFlow RIVER 2',
-        slug: 'river-2',
-        category: 'battery',
-        brand: 'EcoFlow',
-        capacityWh: 256,
-        outputPowerW: 300,
-        expandable: false,
-        description: 'Compact and lightweight portable power station.',
-        keyFeatures: JSON.stringify(['256Wh capacity', '300W output', 'Fast charging', 'Lightweight design']),
-        priceMad: null,
-        url: 'https://www.easypower.ma/en/shop',
-        imageUrl: '',
-        isActive: 1,
-      },
-      {
-        name: 'EcoFlow RIVER 2 Max',
-        slug: 'river-2-max',
-        category: 'battery',
-        brand: 'EcoFlow',
-        capacityWh: 512,
-        outputPowerW: 500,
-        expandable: false,
-        description: 'Mid-size portable power station with good capacity.',
-        keyFeatures: JSON.stringify(['512Wh capacity', '500W output', 'Fast charging', 'Portable design']),
-        priceMad: null,
-        url: 'https://www.easypower.ma/en/shop',
-        imageUrl: '',
-        isActive: 1,
-      },
-      {
-        name: 'EcoFlow RIVER 2 Pro',
-        slug: 'river-2-pro',
-        category: 'battery',
-        brand: 'EcoFlow',
-        capacityWh: 768,
-        outputPowerW: 800,
-        expandable: false,
-        description: 'High-performance portable power station.',
-        keyFeatures: JSON.stringify(['768Wh capacity', '800W output', 'Fast charging', 'Multiple ports']),
-        priceMad: null,
-        url: 'https://www.easypower.ma/en/shop',
-        imageUrl: '',
-        isActive: 1,
-      },
-
-      // ========== BATTERY EXTENSIONS (category: battery) ==========
-      {
-        name: 'EcoFlow DELTA Pro Battery Extension',
-        slug: 'delta-pro-battery-extension',
-        category: 'battery',
-        brand: 'EcoFlow',
-        capacityWh: 3600,
-        outputPowerW: null,
-        expandable: false,
-        description: 'Extra battery for DELTA Pro (expands capacity significantly).',
-        keyFeatures: JSON.stringify(['3600Wh additional capacity', 'Seamless integration', 'LFP battery']),
-        priceMad: 25000,
-        url: 'https://www.easypower.ma/en/shop/bex-000005-delta-pro-battery-extension-74',
-        imageUrl: '',
-        isActive: 1,
-      },
-      {
-        name: 'EcoFlow DELTA 2 Battery Extension',
-        slug: 'delta-2-battery-extension',
-        category: 'battery',
-        brand: 'EcoFlow',
-        capacityWh: 1024,
-        outputPowerW: null,
-        expandable: false,
-        description: 'Extra battery for DELTA 2 series.',
-        keyFeatures: JSON.stringify(['1024Wh additional capacity', 'Easy plug-in', 'Storage compartment']),
-        priceMad: 6900,
-        url: 'https://www.easypower.ma/en/shop/bex-000004-delta-2-battery-extension-72',
-        imageUrl: '',
-        isActive: 1,
-      },
-
-      // ========== INVERTERS (category: inverter) ==========
-      // Using high-output power stations as inverters for the recommendation engine
-      {
-        name: 'EcoFlow DELTA Pro (Inverter 3600W)',
-        slug: 'delta-pro-inverter',
-        category: 'inverter',
-        brand: 'EcoFlow',
-        capacityWh: null,
-        outputPowerW: 3600,
-        expandable: false,
-        description: 'Powerful inverter from DELTA Pro, 3600W continuous output (4500W with X-Boost).',
-        keyFeatures: JSON.stringify(['3600W continuous output', '4500W with X-Boost', 'Pure sine wave', 'EV charging compatible']),
-        priceMad: null,
-        url: 'https://www.easypower.ma/en/shop/sel-000011-delta-pro-int-75',
-        imageUrl: '',
-        isActive: 1,
-      },
-      {
-        name: 'EcoFlow Smart Home Panel',
-        slug: 'smart-home-panel-inverter',
-        category: 'inverter',
-        brand: 'EcoFlow',
-        capacityWh: null,
-        outputPowerW: 5000,
-        expandable: false,
-        description: 'Whole-home backup integration panel for DELTA Pro. Automatic backup power.',
-        keyFeatures: JSON.stringify(['Whole-home integration', 'Automatic backup', 'Compatible with DELTA Pro']),
-        priceMad: 25829,
-        url: 'https://www.easypower.ma/en/shop/5004601008-smart-home-panel-76',
-        imageUrl: '',
-        isActive: 1,
-      },
-    ];
+  // ========== POWER STATIONS & BATTERIES (category: battery) ==========
+  {
+    name: 'BLUETTI Premium 100 V2',
+    slug: 'premium-100-v2',
+    category: 'battery',
+    brand: 'BLUETTI',
+    capacityWh: 1024,
+    outputPowerW: 1800,
+    expandable: false,
+    description: 'Portable LiFePO4 power station with 1024Wh capacity, 1800W AC output (2700W Power Lifting), ultra-fast charging and 1000W solar input.',
+    keyFeatures: JSON.stringify([
+      '1024Wh LiFePO4 battery',
+      '1800W AC output (2700W peak Power Lifting)',
+      '1000W solar input',
+      '1200W Turbo AC charging',
+      '80% charge in 45 minutes',
+      '4000+ battery cycles',
+      '30dB quiet operation',
+      '10-year battery lifespan'
+    ]),
+    priceMad: 599,
+    url: 'https://fr.bluettipower.eu/products/bluetti-premium-100-v2-station-d-energie-portable?srsltid=AfmBOopMzIsAt7uUCGwsOMEiCE446_SsOdyZpqvRxEI-5v5JyfaJFpf9',
+    imageUrl: 'https://fr.bluettipower.eu/cdn/shop/files/Premium100V2EU_1.svg?v=1776948374&width=800',
+    isActive: 1,
+  },
+  {
+    name: 'BLUETTI Premium 200 V2',
+    slug: 'premium-200-v2',
+    category: 'battery',
+    brand: 'BLUETTI',
+    capacityWh: 2073.6,
+    outputPowerW: 2700,
+    expandable: false,
+    description: 'Portable LiFePO₄ power station with 2073.6Wh capacity, 2700W AC output (4050W Power Lifting), ultra-fast charging, 1000W solar input, and intelligent app control.',
+    keyFeatures: JSON.stringify([
+      '2073.6Wh LiFePO₄ battery',
+      '2700W AC output (4050W Power Lifting)',
+      '1000W solar input',
+      '1500W Turbo AC charging',
+      '6000+ battery cycles',
+      '0.015s UPS mode',
+      'WiFi & Bluetooth app control',
+      '100W USB-C fast charging',
+      '15W wireless charging',
+      '10-year battery lifespan'
+    ]),
+    priceMad: 1099.17,
+    url: 'https://fr.bluettipower.eu/products/bluetti-premium-200-v2-portable-power-station?srsltid=AfmBOorFA04DPNO_VggDrSnOkwHyn2FAPl0mbuu6IcB4AynVdy5-bRHt',
+    imageUrl: 'https://fr.bluettipower.eu/cdn/shop/files/Premium_200_V2_EU_1x_4eb94afd-ffa3-4dac-ba71-4960a4a922b9.png?v=1779264826&width=800',
+    isActive: 1,
+  },
+  {
+    name: 'BLUETTI Balco 260',
+    slug: 'balco-260',
+    category: 'battery',
+    brand: 'BLUETTI',
+    capacityWh: 2560,
+    outputPowerW: 1200,
+    expandable: true,
+    description: 'Smart balcony solar energy storage system with integrated bidirectional inverter and expandable LiFePO4 battery.',
+    keyFeatures: JSON.stringify([
+      '2560Wh LiFePO4 battery',
+      '1200W bidirectional inverter',
+      '2400W solar input (4 MPPT)',
+      'Expandable to 15kWh',
+      '96.1% conversion efficiency',
+      '6000 battery cycles',
+      'IP65 protection',
+      'Wi-Fi & Bluetooth'
+    ]),
+    priceMad: 874.17,
+    url: 'https://fr.bluettipower.eu/pages/panneau-solaire-balcon?srsltid=AfmBOoptzGZN6tVpS6I90FE3Kq6PPKZ3POgJ0kHfah8w92EPDEUS4BR3',
+    imageUrl: 'https://www.revolution-energetique.com/_next/image/?url=https%3A%2F%2Fcdn.revolution-energetique.com%2Fuploads%2F2026%2F06%2Fbluetti-balco-260.jpg&w=3840&q=75',
+    isActive: 1,
+  },
+];
 
     let inserted = 0;
     for (const p of products) {
@@ -659,7 +550,7 @@ app.post('/api/products/seed', async (req, res) => {
         .input('Expandable', sql.Bit, p.expandable ? 1 : 0)
         .input('Description', sql.NVarChar(sql.MAX), p.description)
         .input('KeyFeatures', sql.NVarChar(sql.MAX), p.keyFeatures)
-        .input('PriceMad', sql.Int, p.priceMad)
+        .input('PriceMad', sql.Float, p.priceMad)
         .input('Url', sql.NVarChar(sql.MAX), p.url)
         .input('ImageUrl', sql.NVarChar(sql.MAX), p.imageUrl)
         .input('IsActive', sql.Bit, p.isActive)
@@ -786,34 +677,6 @@ app.put('/api/equipment/:id', async (req, res) => {
   } catch (err) {
     console.error('Error updating equipment:', err);
     res.status(500).json({ error: 'Erreur lors de la mise à jour de l\'équipement' });
-  }
-});
-
-// DELETE /api/equipment/:id — Soft-delete an equipment item
-app.delete('/api/equipment/:id', async (req, res) => {
-  try {
-    const pool = await poolPromise;
-
-    // Check existence first
-    const check = await pool.request()
-      .input('Id', sql.Int, parseInt(req.params.id))
-      .query(`SELECT Id FROM EquipmentItems WHERE Id = @Id AND IsActive = 1`);
-
-    if (check.recordset.length === 0) {
-      return res.status(404).json({ error: 'Équipement non trouvé' });
-    }
-
-    await pool.request()
-      .input('Id', sql.Int, parseInt(req.params.id))
-      .query(`
-        UPDATE EquipmentItems SET IsActive = 0, UpdatedAt = GETDATE()
-        WHERE Id = @Id
-      `);
-
-    res.json({ message: 'Équipement supprimé avec succès' });
-  } catch (err) {
-    console.error('Error deleting equipment:', err);
-    res.status(500).json({ error: 'Erreur lors de la suppression de l\'équipement' });
   }
 });
 
@@ -1102,6 +965,110 @@ app.post('/api/equipment/seed', async (req, res) => {
   } catch (err) {
     console.error('Error seeding equipment:', err);
     res.status(500).json({ error: 'Erreur lors du seed des équipements' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Other Sales API
+// ─────────────────────────────────────────────────────────────
+
+// GET /api/other-sales — List all other sales
+app.get('/api/other-sales', async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+      SELECT Id, CustomerInfo, Products, OrderNumber, PaymentDate, CreatedAt
+      FROM OtherSales
+      ORDER BY CreatedAt DESC
+    `);
+
+    const sales = result.recordset.map((row) => {
+      const customer = JSON.parse(row.CustomerInfo);
+      const products = JSON.parse(row.Products);
+      return {
+        id: row.Id,
+        customer,
+        products,
+        orderNumber: row.OrderNumber,
+        paymentDate: row.PaymentDate,
+        createdAt: row.CreatedAt,
+      };
+    });
+
+    res.json(sales);
+  } catch (err) {
+    console.error('Error fetching other sales:', err);
+    res.status(500).json({ error: 'Erreur lors du chargement des ventes' });
+  }
+});
+
+// GET /api/other-sales/:id — Get a single other sale by ID
+app.get('/api/other-sales/:id', async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input('Id', sql.Int, parseInt(req.params.id))
+      .query(`
+        SELECT Id, CustomerInfo, Products, OrderNumber, PaymentDate, CreatedAt
+        FROM OtherSales
+        WHERE Id = @Id
+      `);
+
+    if (result.recordset.length === 0) {
+      return res.status(404).json({ error: 'Vente non trouvée' });
+    }
+
+    const row = result.recordset[0];
+    const sale = {
+      id: row.Id,
+      customer: JSON.parse(row.CustomerInfo),
+      products: JSON.parse(row.Products),
+      orderNumber: row.OrderNumber,
+      paymentDate: row.PaymentDate,
+      createdAt: row.CreatedAt,
+    };
+
+    res.json(sale);
+  } catch (err) {
+    console.error('Error fetching other sale:', err);
+    res.status(500).json({ error: 'Erreur lors du chargement de la vente' });
+  }
+});
+
+// POST /api/other-sales — Create a new other sale
+app.post('/api/other-sales', async (req, res) => {
+  try {
+    const { customer, products, orderNumber, paymentDate } = req.body;
+
+    if (!customer || !products || !products.length) {
+      return res.status(400).json({ error: 'customer and products are required' });
+    }
+
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input('CustomerInfo', sql.NVarChar(sql.MAX), JSON.stringify(customer))
+      .input('Products', sql.NVarChar(sql.MAX), JSON.stringify(products))
+      .input('OrderNumber', sql.NVarChar(50), orderNumber || null)
+      .input('PaymentDate', sql.Date, paymentDate || null)
+      .query(`
+        INSERT INTO OtherSales (CustomerInfo, Products, OrderNumber, PaymentDate)
+        OUTPUT INSERTED.Id, INSERTED.OrderNumber, INSERTED.PaymentDate
+        VALUES (@CustomerInfo, @Products, @OrderNumber, @PaymentDate)
+      `);
+
+    const newId = result.recordset[0].Id;
+    const savedOrderNumber = result.recordset[0].OrderNumber;
+    const savedPaymentDate = result.recordset[0].PaymentDate;
+
+    res.status(201).json({
+      id: newId,
+      orderNumber: savedOrderNumber,
+      paymentDate: savedPaymentDate,
+      message: 'Vente enregistrée avec succès',
+    });
+  } catch (err) {
+    console.error('Error creating other sale:', err);
+    res.status(500).json({ error: 'Erreur lors de la création de la vente' });
   }
 });
 

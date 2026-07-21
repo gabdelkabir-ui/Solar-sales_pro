@@ -20,7 +20,7 @@ export async function fetchProducts(category?: string): Promise<Product[]> {
 }
 
 export async function fetchAllProducts(): Promise<Product[]> {
-  if (cachedProducts) return cachedProducts;
+  if (cachedProducts && cachedProducts.length > 0) return cachedProducts;
   const products = await fetchProducts();
   cachedProducts = products;
   return products;
@@ -46,7 +46,8 @@ export async function seedProducts(): Promise<boolean> {
  */
 export async function getRecommendationFromProducts(
   dailyKWh: number,
-  peakPower: number
+  _peakPower: number,
+  includePanels: boolean = true
 ): Promise<ProductRecommendation | null> {
   const products = await fetchAllProducts();
 
@@ -64,49 +65,43 @@ export async function getRecommendationFromProducts(
   // Fetch again after potential seed
   const allProducts = cachedProducts || await fetchAllProducts();
 
-  // Smart filtering: use category as primary filter, but also include any product with matching specs
+  // Smart filtering: use category as primary filter
   const panels = allProducts.filter(p => p.category === 'panel' && p.outputPowerW);
   const batteries = allProducts.filter(p => p.category === 'battery' && p.capacityWh);
-  const inverters = allProducts.filter(p => p.category === 'inverter' && p.outputPowerW);
 
-  if (panels.length === 0 || batteries.length === 0 || inverters.length === 0) {
+  if (batteries.length === 0) {
     return null;
   }
 
-  // ---- Panel selection ----
-  const sunHours = 4.5;
-  const requiredPanelPower = (dailyKWh * 1.2 * 1000) / sunHours; // in Watts
-  // Pick panel with power closest to required / count
-  // We'll try 1..20 panels and find best match
-  let bestPanel: Product = panels[0];
-  let bestPanelCount = 1;
-  let bestPanelDiff = Infinity;
+  // ---- Panel selection (only if includePanels is true) ----
+  let bestPanel: Product | null = null;
+  let bestPanelCount = 0;
+  let panelPower = 0;
 
-  for (const panel of panels) {
-    const pw = panel.outputPowerW!;
-    for (let count = 1; count <= 20; count++) {
-      const totalPower = count * pw;
-      const diff = Math.abs(totalPower - requiredPanelPower);
-      if (diff < bestPanelDiff) {
-        bestPanelDiff = diff;
-        bestPanel = panel;
-        bestPanelCount = count;
+  if (includePanels) {
+    if (panels.length === 0) return null;
+
+    const sunHours = 4.5;
+    const requiredPanelPower = (dailyKWh * 1.2 * 1000) / sunHours; // in Watts
+    // Pick panel with power closest to required / count
+    // We'll try 1..20 panels and find best match
+    bestPanel = panels[0];
+    let bestPanelDiff = Infinity;
+
+    for (const panel of panels) {
+      const pw = panel.outputPowerW!;
+      for (let count = 1; count <= 20; count++) {
+        const totalPower = count * pw;
+        const diff = Math.abs(totalPower - requiredPanelPower);
+        if (diff < bestPanelDiff) {
+          bestPanelDiff = diff;
+          bestPanel = panel;
+          bestPanelCount = count;
+        }
       }
     }
-  }
 
-  const panelPower = bestPanelCount * bestPanel.outputPowerW!;
-
-  // ---- Inverter selection ----
-  const requiredInverterPower = Math.max(3000, Math.ceil((peakPower * 1.25) / 1000) * 1000);
-  let bestInverter: Product = inverters[0];
-  let bestInverterDiff = Infinity;
-  for (const inv of inverters) {
-    const diff = Math.abs(inv.outputPowerW! - requiredInverterPower);
-    if (diff < bestInverterDiff) {
-      bestInverterDiff = diff;
-      bestInverter = inv;
-    }
+    panelPower = bestPanelCount * bestPanel.outputPowerW!;
   }
 
   // ---- Battery selection ----
@@ -124,19 +119,16 @@ export async function getRecommendationFromProducts(
   const batteryCapacity = bestBattery.capacityWh! / 1000;
   const autonomyDays = parseFloat((batteryCapacity / dailyKWh).toFixed(1));
 
-  const totalPriceMad = (bestPanel.priceMad || 0) * bestPanelCount
-    + (bestBattery.priceMad || 0)
-    + (bestInverter.priceMad || 0);
+  const totalPriceMad = (bestPanel ? (bestPanel.priceMad || 0) * bestPanelCount : 0)
+    + (bestBattery.priceMad || 0);
 
   return {
-    panel: bestPanel,
+    panel: bestPanel || panels[0], // fallback panel for type safety (won't be displayed)
     battery: bestBattery,
-    inverter: bestInverter,
     panelCount: bestPanelCount,
     panelPower,
     batteryCapacity,
     autonomyDays,
-    inverterPower: bestInverter.outputPowerW!,
     totalPriceMad,
   };
 }
