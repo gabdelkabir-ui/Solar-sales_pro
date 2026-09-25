@@ -327,34 +327,22 @@ const EquipmentManager: React.FC = () => {
               </FormControl>
             </Box>
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-              <FormControl size="small" required>
-                <InputLabel>Catégorie</InputLabel>
-                <Select
-                  value={form.category}
-                  label="Catégorie"
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
-                >
-                  {CATEGORIES.map((cat) => (
-                    <MenuItem key={cat} value={cat}>
-                      {getShortCategory(cat)}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl size="small" required>
-                <InputLabel>Sous-catégorie</InputLabel>
-                <Select
-                  value={form.subCategory}
-                  label="Sous-catégorie"
-                  onChange={(e) => setForm({ ...form, subCategory: e.target.value })}
-                >
-                  <MenuItem value="Photographes professionnels terrain (74.20Z)">Photographes professionnels terrain (74.20Z)</MenuItem>
-                  <MenuItem value="Production audiovisuelle mobile (59.11B)">Production audiovisuelle mobile (59.11B)</MenuItem>
-                  <MenuItem value="Sonorisation / regie mobile (90.02Z)">Sonorisation / regie mobile (90.02Z)</MenuItem>
-                  <MenuItem value="Studios creatifs mobiles (74.10Z)">Studios creatifs mobiles (74.10Z)</MenuItem>
-                  <MenuItem value="Télépilotes drones professionnels (74.90B)">Télépilotes drones professionnels (74.90B)</MenuItem>
-                </Select>
-              </FormControl>
+              <TextField
+                label="Catégorie personnalisable"
+                required
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                helperText="Vous pouvez saisir une nouvelle catégorie."
+                size="small"
+              />
+              <TextField
+                label="Sous-catégorie personnalisable"
+                required
+                value={form.subCategory}
+                onChange={(e) => setForm({ ...form, subCategory: e.target.value })}
+                helperText="Ex. Photographie, BTP, Agriculture…"
+                size="small"
+              />
             </Box>
           </Stack>
         </DialogContent>

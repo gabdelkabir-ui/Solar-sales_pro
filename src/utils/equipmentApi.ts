@@ -28,7 +28,7 @@ export async function fetchAllEquipment(): Promise<Equipment[]> {
 
 export async function seedEquipment(): Promise<boolean> {
   try {
-    const res = await fetch(`${API_BASE}/equipment/seed`, { method: 'POST' });
+    const res = await fetch(`${API_BASE}/equipment/seed`, { method: 'POST', credentials: 'include' });
     if (!res.ok) throw new Error('Failed to seed equipment');
     const data = await res.json();
     console.log('Seed result:', data.message);
@@ -50,6 +50,7 @@ export async function createEquipment(item: {
   try {
     const res = await fetch(`${API_BASE}/equipment`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(item),
     });
@@ -73,6 +74,7 @@ export async function updateEquipment(id: number, item: {
   try {
     const res = await fetch(`${API_BASE}/equipment/${id}`, {
       method: 'PUT',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(item),
     });
@@ -87,7 +89,7 @@ export async function updateEquipment(id: number, item: {
 
 export async function deleteEquipment(id: number): Promise<boolean> {
   try {
-    const res = await fetch(`${API_BASE}/equipment/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${API_BASE}/equipment/${id}`, { method: 'DELETE', credentials: 'include' });
     if (!res.ok) throw new Error('Failed to delete equipment');
     cachedEquipment = null; // invalidate cache
     return true;

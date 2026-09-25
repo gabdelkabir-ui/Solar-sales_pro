@@ -4,6 +4,12 @@ const API_BASE = `http://${window.location.hostname}:5000/api`;
 
 let cachedProducts: Product[] | null = null;
 
+export function resolveProductImageUrl(imageUrl: string | null | undefined): string | null {
+  if (!imageUrl) return null;
+  if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
+  return `http://${window.location.hostname}:5000${imageUrl.startsWith('/') ? imageUrl : `/${imageUrl}`}`;
+}
+
 export async function fetchProducts(category?: string): Promise<Product[]> {
   try {
     const url = category
@@ -12,7 +18,7 @@ export async function fetchProducts(category?: string): Promise<Product[]> {
     const res = await fetch(url);
     if (!res.ok) throw new Error('Failed to fetch products');
     const data: Product[] = await res.json();
-    return data;
+    return data.map((product) => ({ ...product, imageUrl: resolveProductImageUrl(product.imageUrl) }));
   } catch (err) {
     console.error('Error fetching products:', err);
     return [];
@@ -28,7 +34,7 @@ export async function fetchAllProducts(): Promise<Product[]> {
 
 export async function seedProducts(): Promise<boolean> {
   try {
-    const res = await fetch(`${API_BASE}/products/seed`, { method: 'POST' });
+    const res = await fetch(`${API_BASE}/products/seed`, { method: 'POST', credentials: 'include' });
     if (!res.ok) throw new Error('Failed to seed products');
     const data = await res.json();
     console.log('Seed result:', data.message);

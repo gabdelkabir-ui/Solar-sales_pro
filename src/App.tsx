@@ -16,11 +16,15 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Alert
+  Alert,
+  InputAdornment,
+  IconButton
 } from '@mui/material';
 import SolarPowerIcon from '@mui/icons-material/SolarPower';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import theme from './theme';
 import CustomerForm from './components/CustomerForm';
 import EquipmentCalculator from './components/EquipmentCalculator';
@@ -33,7 +37,7 @@ import EquipmentManager from './components/EquipmentManager';
 import EnergySimulation from './components/EnergySimulation';
 import OtherProductsSale from './components/OtherProductsSale';
 import SaleReportView from './components/SaleReportView';
-import { CustomerInfo, SelectedEquipment } from './types';
+import { CustomerInfo, SelectedEquipment, ReportType } from './types';
 import { useProjectStore } from './hooks/useProjectStore';
 
 interface TabPanelProps {
@@ -77,16 +81,29 @@ const tabConfigs = [
 function App() {
   const [activeTab, setActiveTab] = useState(0);
   const [showReport, setShowReport] = useState(false);
-  const [reportType, setReportType] = useState<'bon-de-commande' | 'facture'>('bon-de-commande');
+  const [reportType, setReportType] = useState<ReportType>('bon-de-commande');
   const [reportProjectId, setReportProjectId] = useState<number | null>(null);
   const [reportData, setReportData] = useState<{ orderNumber: string; paymentDate: string; customer: CustomerInfo; equipment: SelectedEquipment[] } | null>(null);
   const [showSaleReport, setShowSaleReport] = useState(false);
-  const [saleReportData, setSaleReportData] = useState<{ sale: any; type: 'bon-de-commande' | 'facture' } | null>(null);
+  const [saleReportData, setSaleReportData] = useState<{ sale: any; type: ReportType } | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminDialogOpen, setAdminDialogOpen] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
-  const [adminError, setAdminError] = useState(false);
+  const [adminError, setAdminError] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [adminLoading, setAdminLoading] = useState(true);
+  const [adminSubmitting, setAdminSubmitting] = useState(false);
   const store = useProjectStore();
+
+  const API_BASE = `http://${window.location.hostname}:5000/api`;
+
+  // La session est portée par un cookie HttpOnly : elle survit au refresh.
+  useEffect(() => {
+    fetch(`${API_BASE}/auth/me`, { credentials: 'include' })
+      .then((response) => { if (response.ok) setIsAdmin(true); })
+      .catch(() => undefined)
+      .finally(() => setAdminLoading(false));
+  }, [API_BASE]);
 
   const visibleTabs = tabConfigs.filter(t => isAdmin || !t.adminOnly);
 
@@ -101,32 +118,47 @@ function App() {
     setActiveTab(newValue);
   };
 
-  const handleAdminClick = () => {
+  const handleAdminClick = async () => {
     if (isAdmin) {
+      await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => undefined);
       setIsAdmin(false);
       setActiveTab(0);
     } else {
       setAdminDialogOpen(true);
       setAdminPassword('');
-      setAdminError(false);
+      setAdminError('');
     }
   };
 
-  const handleAdminLogin = () => {
-    if (adminPassword === 'telco') {
+  const handleAdminLogin = async () => {
+    if (!adminPassword.trim() || adminSubmitting) return;
+    setAdminSubmitting(true);
+    try {
+      const response = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ password: adminPassword }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || `Connexion refusée (${response.status})`);
       setIsAdmin(true);
       setAdminDialogOpen(false);
       setAdminPassword('');
-      setAdminError(false);
-    } else {
-      setAdminError(true);
-      setAdminPassword('');
+      setAdminError('');
+    } catch (error: any) {
+      const message = error instanceof TypeError
+        ? `Impossible de joindre le serveur backend à l’adresse ${API_BASE}. Vérifiez qu’il fonctionne sur le port 5000.`
+        : error.message || 'Échec de la connexion administrateur.';
+      setAdminError(message);
+    } finally {
+      setAdminSubmitting(false);
     }
   };
 
-  const handleGenerateReportFromProject = async (projectId: number, type: 'bon-de-commande' | 'facture' = 'bon-de-commande') => {
+  const handleGenerateReportFromProject = async (projectId: number, type: ReportType = 'bon-de-commande') => {
     try {
-      const response = await fetch(`http://${window.location.hostname}:5000/api/projects/${projectId}`);
+      const response = await fetch(`${API_BASE}/projects/${projectId}`, { credentials: 'include' });
       if (!response.ok) throw new Error('Erreur lors du chargement du projet');
       const project = await response.json();
       store.loadProject({
@@ -151,13 +183,13 @@ function App() {
     }
   };
 
-  const handleGenerateInvoiceFromProject = async (projectId: number) => {
-    await handleGenerateReportFromProject(projectId, 'facture');
+  const handleGenerateDevisFromProject = async (projectId: number) => {
+    await handleGenerateReportFromProject(projectId, 'devis');
   };
 
   const handleViewSimulation = async (projectId: number) => {
     try {
-      const response = await fetch(`http://${window.location.hostname}:5000/api/projects/${projectId}`);
+      const response = await fetch(`${API_BASE}/projects/${projectId}`, { credentials: 'include' });
       if (!response.ok) throw new Error('Erreur lors du chargement du projet');
       const project = await response.json();
       if (project.energySimulation) {
@@ -189,7 +221,8 @@ function App() {
   const handleAdminDialogClose = () => {
     setAdminDialogOpen(false);
     setAdminPassword('');
-    setAdminError(false);
+    setAdminError('');
+    setShowAdminPassword(false);
   };
 
   const renderTabPanel = (tab: typeof tabConfigs[0]) => {
@@ -261,7 +294,7 @@ function App() {
         return (
           <SavedProjects 
             onGenerateReport={(id) => handleGenerateReportFromProject(id, 'bon-de-commande')}
-            onGenerateInvoice={handleGenerateInvoiceFromProject}
+            onGenerateDevis={handleGenerateDevisFromProject}
             onViewSimulation={handleViewSimulation}
           />
         );
@@ -280,11 +313,12 @@ function App() {
             <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
               Solar Sales Pro
             </Typography>
-            <Button 
+             <Button
               color="inherit" 
               startIcon={<AdminPanelSettingsIcon />}
               onClick={handleAdminClick}
               sx={{ mr: 1 }}
+              disabled={adminLoading || adminSubmitting}
             >
               {isAdmin ? 'Désactiver Admin' : 'Admin'}
             </Button>
@@ -353,36 +387,44 @@ function App() {
       </Box>
 
       {/* Admin Password Dialog */}
-      <Dialog open={adminDialogOpen} onClose={handleAdminDialogClose} maxWidth="xs" fullWidth>
+      <Dialog open={adminDialogOpen} onClose={adminSubmitting ? undefined : handleAdminDialogClose} maxWidth="xs" fullWidth>
         <DialogTitle>Accès Administrateur</DialogTitle>
         <DialogContent>
           {adminError && (
             <Alert severity="error" sx={{ mb: 2 }}>
-              Mot de passe incorrect. Veuillez réessayer.
+              {adminError}
             </Alert>
           )}
+          <Box component="form" onSubmit={(event) => { event.preventDefault(); void handleAdminLogin(); }}>
           <TextField
             autoFocus
             fullWidth
             label="Mot de passe"
-            type="password"
+            type={showAdminPassword ? 'text' : 'password'}
             value={adminPassword}
             onChange={(e) => {
               setAdminPassword(e.target.value);
-              setAdminError(false);
+              setAdminError('');
             }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleAdminLogin();
-              }
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton edge="end" onClick={() => setShowAdminPassword((value) => !value)} aria-label="Afficher ou masquer le mot de passe">
+                      {showAdminPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              },
             }}
             sx={{ mt: 1 }}
           />
+          </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleAdminDialogClose}>Annuler</Button>
-          <Button variant="contained" onClick={handleAdminLogin}>
-            Valider
+          <Button onClick={handleAdminDialogClose} disabled={adminSubmitting}>Annuler</Button>
+          <Button variant="contained" onClick={() => void handleAdminLogin()} disabled={adminSubmitting || !adminPassword.trim()}>
+            {adminSubmitting ? 'Connexion...' : 'Valider'}
           </Button>
         </DialogActions>
       </Dialog>

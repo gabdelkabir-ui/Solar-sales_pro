@@ -19,6 +19,12 @@ export interface CustomerInfo {
   phone: string;
   city: string;
   notes: string;
+  firstName?: string;
+  address?: string;
+  postalCode?: string;
+  email?: string;
+  // Permet d'étendre facilement la liste des champs via customerFields.ts
+  [key: string]: any;
 }
 
 export interface Client {
@@ -27,7 +33,33 @@ export interface Client {
   phone: string;
   city: string;
   notes: string;
+  firstName?: string;
+  address?: string;
+  postalCode?: string;
+  email?: string;
+  [key: string]: any;
 }
+
+/**
+ * Définition d'un champ client configurable.
+ * Utilisée par le formulaire, l'import Excel et l'affichage dans les rapports.
+ */
+export interface CustomerFieldDef {
+  /** Clé dans CustomerInfo (ex: 'firstName') */
+  key: string;
+  /** Libellé affiché dans le formulaire */
+  label: string;
+  /** Libellé affiché dans le rapport (Devis / Bon de commande) */
+  printLabel: string;
+  required?: boolean;
+  /** Texte affiché quand la valeur est absente (ex: '?') */
+  placeholder?: string;
+  /** Saisie multiligne (ex: Notes) */
+  multiline?: boolean;
+}
+
+/** Type de document généré dans les rapports */
+export type ReportType = 'bon-de-commande' | 'devis';
 
 export interface SolarSystemRecommendation {
   panelPower: number;
@@ -50,14 +82,16 @@ export interface ProjectData {
 
 export interface ColumnMapping {
   excelColumn: string;
-  field: 'name' | 'phone' | 'city' | 'notes' | 'skip';
+  field: string; // clé de CustomerFieldDef ou 'skip'
 }
 
 export interface Product {
   id: number;
   name: string;
   slug: string;
-  category: 'panel' | 'battery' | 'inverter' | 'other';
+  // Catégorie extensible : les anciennes valeurs restent compatibles avec
+  // les produits déjà enregistrés en base.
+  category: string;
   brand: string;
   capacityWh: number | null;
   outputPowerW: number | null;

@@ -1,20 +1,20 @@
 import React from 'react';
 // Font Awesome
-import { FaCamera, FaVideo, FaMicrophone, FaLightbulb, FaHdd, FaWifi, FaBatteryFull, FaPrint, FaTabletAlt, FaMapMarkerAlt, FaSlidersH, FaVolumeUp, FaDesktop, FaPen, FaAdjust, FaTv, FaSnowflake, FaFire, FaMugHot, FaWind, FaTint, FaCashRegister, FaHandPointer, FaCreditCard, FaMobileAlt, FaHardHat, FaCompressArrowsAlt, FaBolt, FaStethoscope, FaToolbox, FaLeaf, FaPlug, FaTruck, FaAmbulance, FaBroadcastTower, FaHeartbeat, FaEye, FaCube, FaCoffee, FaHotTub, FaSolarPanel, FaPlusCircle } from 'react-icons/fa';
+import { FaLightbulb, FaBatteryFull, FaBolt, FaVolumeUp, FaMicrophone, FaHardHat, FaCompressArrowsAlt, FaCoffee, FaHotTub, FaSnowflake, FaWind, FaTint, FaCashRegister, FaHandPointer, FaCreditCard, FaMobileAlt, FaSolarPanel, FaStethoscope, FaCube, FaTv, FaPlusCircle, FaToolbox } from 'react-icons/fa';
 // Material Design Icons
-import { MdExplore, MdAcUnit, MdKitchen, MdAir, MdWaves, MdConstruction, MdCable, MdCloud, MdChargingStation, MdSatelliteAlt, MdRadio, MdMedicalServices, MdSettingsRemote, MdSmartToy, MdFlight, MdSolarPower, MdNetworkCheck } from 'react-icons/md';
+import { MdExplore, MdKitchen, MdCable, MdChargingStation, MdSettingsRemote, MdSmartToy } from 'react-icons/md';
 // Bootstrap Icons
-import { BsLightningCharge, BsCameraVideo, BsPrinter, BsTablet, BsCompass, BsSpeaker, BsMic, BsTv, BsSnow, BsCupHot, BsFan, BsDroplet, BsCreditCard2Front, BsHandIndex, BsPhone, BsTools, BsWater, BsTree, BsRouter, BsTruckFront, BsHeartPulse, BsBox, BsCup } from 'react-icons/bs';
+import { BsFan } from 'react-icons/bs';
 // Tabler Icons
-import { TbCamera, TbCameraPlus, TbDrone, TbMicrophone, TbMusic, TbDeviceLaptop, TbDeviceTablet, TbDeviceMobile, TbRouter, TbBattery, TbBatteryCharging, TbPrinter, TbPhoto, TbCpu, TbAntennaBars5, TbSpeakerphone, TbVinyl, TbTools, TbBuildingFactory2, TbFlame, TbSnowflake, TbFridge, TbMicrowave, TbCoffee, TbWind, TbSun, TbLeaf, TbSmartHome, TbStethoscope, TbShield, TbTruck, TbAmbulance, TbAlertTriangle, TbRadar2, TbBulb, TbWashMachine, TbDeviceDesktop } from 'react-icons/tb';
+import { TbDrone, TbRouter, TbAntennaBars5, TbRadar2, TbDeviceDesktop } from 'react-icons/tb';
 // Feather Icons
-import { FiCamera, FiMonitor, FiHardDrive, FiServer, FiWifi, FiPrinter, FiSmartphone, FiTablet, FiMapPin, FiSliders, FiVolume2, FiMic, FiTv, FiWind, FiDroplet, FiCpu, FiSun, FiCloud, FiRadio, FiHeart, FiEye, FiBox, FiCoffee, FiSearch } from 'react-icons/fi';
+import { FiMonitor, FiHardDrive, FiWifi, FiPrinter, FiTablet, FiVolume2, FiCloud } from 'react-icons/fi';
 // Remix Icons
-import { RiCamera2Line, RiVideoLine, RiMicLine, RiLightbulbLine, RiComputerLine, RiHardDrive2Line, RiWifiLine, RiBattery2ChargeLine, RiPrinterLine, RiTabletLine, RiMapPin2Line, RiEqualizerLine, RiVolumeUpLine, RiSpeakerLine, RiPenNibLine, RiTvLine, RiSnowflakeLine, RiFridgeLine, RiCupLine, RiWaterFlashLine, RiHandCoinLine, RiSmartphoneLine, RiHammerLine, RiFlashlightLine, RiStethoscopeLine, RiPlantLine, RiRouterLine, RiTruckLine, RiHeartPulseLine, RiBox3Line, RiFireLine, RiToolsLine, RiStoreLine, RiContrast2Line } from 'react-icons/ri';
+import { RiVideoLine, RiEqualizerLine, RiPenNibLine, RiContrast2Line } from 'react-icons/ri';
 // Ant Design Icons
-import { AiOutlineCamera, AiOutlineVideoCamera, AiOutlineLaptop, AiOutlineDesktop, AiOutlineTablet, AiOutlineMobile, AiOutlineWifi, AiOutlinePrinter, AiOutlineTool, AiOutlineFire, AiOutlineCloud, AiOutlineBulb, AiOutlineSound, AiOutlineStar, AiOutlineShopping, AiOutlineMedicineBox, AiOutlineSafety, AiOutlineEye, AiOutlineThunderbolt, AiOutlineHeatMap } from 'react-icons/ai';
+import { AiOutlineCamera, AiOutlineDesktop, AiOutlineThunderbolt, AiOutlineBulb } from 'react-icons/ai';
 // Ionicons
-import { IoCamera, IoVideocam, IoMic, IoBulb, IoLaptop, IoHardwareChip, IoServer, IoWifi, IoBatteryCharging, IoPrint, IoAirplane, IoTabletPortrait, IoLocation, IoOptions, IoVolumeHigh, IoDesktop, IoColorPalette, IoTv, IoSnow, IoCafe, IoWater, IoCash, IoPhonePortrait, IoConstruct, IoFlash, IoMedkit, IoHammer, IoLeaf, IoNavigate, IoHeartCircle, IoCarSport, IoAlbums, IoSearch } from 'react-icons/io5';
+import { IoVideocam, IoCamera, IoBulb, IoHeartCircle } from 'react-icons/io5';
 
 export const getEquipmentIcon = (iconName: string, size: number = 20): React.ReactNode => {
   switch (iconName) {

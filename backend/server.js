@@ -1,13 +1,109 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
+const { randomUUID, scryptSync, timingSafeEqual } = require('crypto');
 const { sql, poolPromise } = require('./db');
+const { clientDuplicateKey, clientIdentityCandidates } = require('./clientImportUtils');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const ADMIN_SESSION_COOKIE = 'solar_admin_session';
+const ADMIN_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const adminSessions = new Map();
+console.log(`Admin authentication: ${process.env.ADMIN_PASSWORD_HASH ? 'secure hash configured' : 'development fallback password active'}`);
 
 // Middleware
-app.use(cors({ origin: '*' }));
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
+
+const productUploadDirectory = path.join(__dirname, 'uploads', 'products');
+fs.mkdirSync(productUploadDirectory, { recursive: true });
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  maxAge: '7d',
+  immutable: true,
+}));
+
+const productImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, callback) => callback(null, productUploadDirectory),
+    filename: (_req, file, callback) => {
+      const extension = path.extname(file.originalname).toLowerCase();
+      callback(null, `${randomUUID()}${extension}`);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, callback) => {
+    callback(null, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.mimetype));
+  },
+});
+
+function parseCookies(req) {
+  return Object.fromEntries((req.headers.cookie || '').split(';').filter(Boolean).map((part) => {
+    const index = part.indexOf('=');
+    return [part.slice(0, index).trim(), decodeURIComponent(part.slice(index + 1).trim())];
+  }));
+}
+
+function verifyAdminPassword(password) {
+  const configuredHash = process.env.ADMIN_PASSWORD_HASH;
+  if (configuredHash && configuredHash.includes(':')) {
+    const [salt, expectedHex] = configuredHash.split(':');
+    const actual = scryptSync(String(password || ''), salt, 64);
+    const expected = Buffer.from(expectedHex, 'hex');
+    return expected.length === actual.length && timingSafeEqual(actual, expected);
+  }
+  // Compatibilité développement : utiliser ADMIN_PASSWORD dans .env.
+  // Le fallback historique permet aux installations existantes de migrer sans blocage.
+  const configuredPassword = process.env.ADMIN_PASSWORD || 'telco';
+  const actual = Buffer.from(String(password || ''));
+  const expected = Buffer.from(configuredPassword);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+function requireAdmin(req, res, next) {
+  const token = parseCookies(req)[ADMIN_SESSION_COOKIE];
+  const session = token && adminSessions.get(token);
+  if (!session || session.expiresAt < Date.now()) {
+    if (token) adminSessions.delete(token);
+    return res.status(401).json({ error: 'Authentification administrateur requise' });
+  }
+  session.expiresAt = Date.now() + ADMIN_SESSION_TTL_MS;
+  req.isAdmin = true;
+  next();
+}
+
+function setAdminCookie(res, token) {
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  res.setHeader('Set-Cookie', `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${ADMIN_SESSION_TTL_MS / 1000}${secure}`);
+}
+
+app.post('/api/auth/login', (req, res) => {
+  if (!verifyAdminPassword(req.body?.password)) {
+    return res.status(401).json({ error: 'Mot de passe administrateur incorrect' });
+  }
+  const token = randomUUID();
+  adminSessions.set(token, { createdAt: Date.now(), expiresAt: Date.now() + ADMIN_SESSION_TTL_MS });
+  setAdminCookie(res, token);
+  res.json({ authenticated: true, expiresIn: ADMIN_SESSION_TTL_MS });
+});
+
+app.get('/api/auth/me', requireAdmin, (_req, res) => {
+  res.json({ authenticated: true });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const token = parseCookies(req)[ADMIN_SESSION_COOKIE];
+  if (token) adminSessions.delete(token);
+  res.setHeader('Set-Cookie', `${ADMIN_SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0`);
+  res.json({ authenticated: false });
+});
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, session] of adminSessions.entries()) if (session.expiresAt < now) adminSessions.delete(token);
+}, 15 * 60 * 1000).unref();
 
 // Ensure tables exist on startup
 const ensureTables = async () => {
@@ -66,6 +162,14 @@ const ensureTables = async () => {
           CreatedAt DATETIME2 DEFAULT GETDATE()
         );
         PRINT 'Table Clients created successfully';
+      END
+    `);
+    // Add Extra (JSON) column to Clients for extensible fields
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Clients') AND name = 'Extra')
+      BEGIN
+        ALTER TABLE Clients ADD Extra NVARCHAR(MAX) NULL;
+        PRINT 'Column Extra added to Clients table';
       END
     `);
     // Products table
@@ -170,7 +274,7 @@ app.post('/api/projects', async (req, res) => {
 });
 
 // GET /api/projects — List all projects (summary)
-app.get('/api/projects', async (req, res) => {
+app.get('/api/projects', requireAdmin, async (req, res) => {
   try {
     const pool = await poolPromise;
     const result = await pool.request().query(`
@@ -199,7 +303,7 @@ app.get('/api/projects', async (req, res) => {
 });
 
 // GET /api/projects/:id — Get full project details
-app.get('/api/projects/:id', async (req, res) => {
+app.get('/api/projects/:id', requireAdmin, async (req, res) => {
   try {
     const pool = await poolPromise;
     const result = await pool.request()
@@ -233,6 +337,70 @@ app.get('/api/projects/:id', async (req, res) => {
   }
 });
 
+// Convertit une ligne Clients (avec Extra JSON) en objet client camelCase + champs étendus
+function parseClientRow(row) {
+  let extra = {};
+  try {
+    extra = JSON.parse(row.Extra || '{}');
+  } catch (e) {
+    extra = {};
+  }
+  const fieldLabels = extra._fieldLabels || {};
+  const canonicalExtra = { ...extra, _fieldLabels: { ...fieldLabels } };
+  let phone = String(row.Phone || '').trim();
+  const legacyAliases = {
+    dirigeants: 'dirigeants',
+    dirigeant: 'dirigeants',
+    coordonnees: 'phone',
+    coordonnee: 'phone',
+    creation: 'creation',
+    creationenmoyenne: 'creation',
+    chiffreaffaires: 'chiffreAffaires',
+    chiffreaffairesenmoyenne: 'chiffreAffaires',
+    resultatnet: 'resultatNet',
+    resultatnetenmoyenne: 'resultatNet',
+    effectif: 'effectif',
+  };
+  Object.entries(extra).forEach(([key, value]) => {
+    if (key.startsWith('_')) return;
+    const normalizedKey = String(key).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+    const canonicalKey = legacyAliases[normalizedKey];
+    if (!canonicalKey || value === undefined || value === null || value === '') return;
+    if (canonicalKey === 'phone' && !phone) phone = String(value).trim();
+    if (canonicalKey !== 'phone' && canonicalExtra[canonicalKey] === undefined) canonicalExtra[canonicalKey] = value;
+    if (canonicalKey !== 'phone' && !canonicalExtra._fieldLabels[canonicalKey]) canonicalExtra._fieldLabels[canonicalKey] = fieldLabels[key] || key;
+    if (key !== canonicalKey) delete canonicalExtra[key];
+  });
+
+  const storedName = String(row.Name || '').trim();
+  let displayName = storedName;
+  if (!displayName || /^client import[eé] ligne/i.test(displayName)) {
+    const nameEntry = Object.entries(extra).find(([key, value]) => {
+      const normalizedKey = String(key).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const text = String(value || '').trim();
+      return /raison.?sociale|nom.?entreprise|nom.?societe/.test(normalizedKey) && text && !/^client importe ligne/i.test(text);
+    });
+    if (nameEntry) displayName = String(nameEntry[1]).trim();
+  }
+  return { id: row.Id, name: displayName, phone, city: row.City || '', notes: row.Notes || '', ...canonicalExtra };
+}
+
+// GET /api/clients — List all clients
+app.get('/api/clients', async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+      SELECT Id, Name, Phone, City, Notes, Extra
+      FROM Clients
+      ORDER BY Name ASC
+    `);
+    res.json(result.recordset.map(parseClientRow));
+  } catch (err) {
+    console.error('Error listing clients:', err);
+    res.status(500).json({ error: 'Erreur lors du chargement des clients' });
+  }
+});
+
 // GET /api/clients/search — Search clients
 app.get('/api/clients/search', async (req, res) => {
   try {
@@ -241,49 +409,258 @@ app.get('/api/clients/search', async (req, res) => {
     const result = await pool.request()
       .input('search', sql.NVarChar(255), `%${search}%`)
       .query(`
-        SELECT Id, Name, Phone, City, Notes
+        SELECT Id, Name, Phone, City, Notes, Extra
         FROM Clients
-        WHERE Name LIKE @search OR REPLACE(Phone, ' ', '') LIKE @search
+         WHERE Name LIKE @search OR REPLACE(Phone, ' ', '') LIKE @search OR Extra LIKE @search
         ORDER BY Name ASC
       `);
-    res.json(result.recordset);
+    const clients = result.recordset.map(parseClientRow);
+    res.json(clients);
   } catch (err) {
     console.error('Error searching clients:', err);
     res.status(500).json({ error: 'Erreur lors de la recherche des clients' });
   }
 });
 
-// POST /api/clients/import — Import clients from Excel data
-app.post('/api/clients/import', async (req, res) => {
+const clientImportSessions = new Map();
+
+async function createClientImportSession() {
+  const pool = await poolPromise;
+  const existingResult = await pool.request().query(`SELECT Id, Name, Phone, City, Notes, Extra FROM Clients`);
+  const records = new Map();
+  const identityIndex = new Map();
+  existingResult.recordset.forEach((row) => {
+    const client = parseClientRow(row);
+    records.set(client.id, client);
+    clientIdentityCandidates(client).forEach((key) => {
+      if (!identityIndex.has(key)) identityIndex.set(key, new Set());
+      identityIndex.get(key).add(client.id);
+    });
+  });
+  const id = randomUUID();
+  clientImportSessions.set(id, { records, identityIndex, touchedAt: Date.now() });
+  return id;
+}
+
+function findExistingClient(client, session) {
+  const candidateIds = new Set();
+  for (const key of clientIdentityCandidates(client)) {
+    const ids = session.identityIndex.get(key);
+    if (ids) ids.forEach((id) => candidateIds.add(id));
+  }
+  if (candidateIds.size === 1) return [...candidateIds][0];
+  // Si plusieurs fiches partagent le nom, ne fusionne jamais arbitrairement.
+  // L'identité forte (email ou nom+téléphone) doit être unique.
+  const strongKeys = clientIdentityCandidates(client).filter((key) => key.startsWith('name-email:') || key.startsWith('name-phone:'));
+  const strongIds = new Set();
+  strongKeys.forEach((key) => (session.identityIndex.get(key) || []).forEach((id) => strongIds.add(id)));
+  if (strongIds.size === 1) return [...strongIds][0];
+  // Si une ancienne importation a déjà créé plusieurs copies de la même
+  // identité forte, on enrichit la plus ancienne au lieu d'en créer une autre.
+  return strongIds.size > 1 ? Math.min(...strongIds) : null;
+}
+
+function mergeImportedClient(existing, incoming) {
+  const coreKeys = ['name', 'phone', 'city', 'notes'];
+  const merged = { ...existing };
+  coreKeys.forEach((key) => {
+    if (incoming[key] !== undefined && incoming[key] !== null && String(incoming[key]).trim() !== '' && !/^client importe ligne/i.test(String(incoming[key]))) {
+      merged[key] = String(incoming[key]).trim();
+    }
+  });
+  Object.entries(incoming).forEach(([key, value]) => {
+    if (coreKeys.includes(key) || key.startsWith('_') || value === undefined || value === null || String(value).trim() === '') return;
+    merged[key] = value;
+  });
+  merged._fieldLabels = { ...(existing._fieldLabels || {}), ...(incoming._fieldLabels || {}) };
+  return merged;
+}
+
+function hasImportedChanges(existing, incoming) {
+  for (const [key, value] of Object.entries(incoming)) {
+    if (key.startsWith('_') || value === undefined || value === null || String(value).trim() === '') continue;
+    if (key === 'name' && /^client importe ligne/i.test(String(value))) continue;
+    if (String(existing[key] ?? '').trim() !== String(value).trim()) return true;
+  }
+  for (const [key, value] of Object.entries(incoming._fieldLabels || {})) {
+    if ((existing._fieldLabels || {})[key] !== value) return true;
+  }
+  return false;
+}
+
+function clientExtra(client) {
+  const extra = {};
+  Object.entries(client).forEach(([key, value]) => {
+    if (!['id', 'name', 'phone', 'city', 'notes', '_sourceRow'].includes(key) && value !== undefined && value !== null && value !== '') extra[key] = value;
+  });
+  return extra;
+}
+
+async function importClientBatch(clients, session) {
+  const pool = await poolPromise;
+  if (!session) {
+    const existingResult = await pool.request().query(`SELECT Id, Name, Phone, City, Notes, Extra FROM Clients`);
+    session = { records: new Map(), identityIndex: new Map(), touchedAt: Date.now() };
+    existingResult.recordset.forEach((row) => {
+      const client = parseClientRow(row);
+      session.records.set(client.id, client);
+      clientIdentityCandidates(client).forEach((key) => {
+        if (!session.identityIndex.has(key)) session.identityIndex.set(key, new Set());
+        session.identityIndex.get(key).add(client.id);
+      });
+    });
+  }
+  if (session) session.touchedAt = Date.now();
+  const accepted = [];
+  const updates = [];
+  const duplicates = [];
+  const pendingIdentityKeys = new Set();
+
+  clients.forEach((rawClient, index) => {
+    const client = rawClient && typeof rawClient === 'object' ? rawClient : {};
+    const hasValue = Object.entries(client).some(([key, value]) => !key.startsWith('_') && value !== undefined && value !== null && String(value).trim() !== '');
+    if (!hasValue) return;
+    const safeClient = {
+      ...client,
+      name: String(client.name || `Client importé ligne ${client._sourceRow || index + 1}`).trim(),
+      phone: String(client.phone || '').replace(/[\s\-\.\(\)]/g, ''),
+      city: String(client.city || '').trim(),
+      notes: String(client.notes || '').trim(),
+    };
+    const existingId = findExistingClient(safeClient, session);
+    if (existingId) {
+      const existing = session.records.get(existingId);
+      const merged = mergeImportedClient(existing, safeClient);
+      if (hasImportedChanges(existing, safeClient)) {
+        updates.push({ id: existingId, client: merged, sourceRow: safeClient._sourceRow || index + 1 });
+        session.records.set(existingId, merged);
+        clientIdentityCandidates(merged).forEach((key) => {
+          if (!session.identityIndex.has(key)) session.identityIndex.set(key, new Set());
+          session.identityIndex.get(key).add(existingId);
+        });
+      } else {
+        duplicates.push({ sourceRow: safeClient._sourceRow || index + 1, name: safeClient.name, reason: 'Ligne déjà enregistrée sans nouvelle donnée' });
+      }
+      return;
+    }
+    const incomingIdentityKeys = clientIdentityCandidates(safeClient);
+    if (incomingIdentityKeys.some((key) => pendingIdentityKeys.has(key))) {
+      duplicates.push({ sourceRow: safeClient._sourceRow || index + 1, name: safeClient.name, reason: 'Ligne identique déjà présente dans ce fichier' });
+      return;
+    }
+    incomingIdentityKeys.forEach((key) => pendingIdentityKeys.add(key));
+    accepted.push(safeClient);
+  });
+
+  // Les lignes nouvelles sont insérées ensemble.
+  let inserted = [];
+  if (accepted.length > 0) {
+    const request = pool.request();
+    const values = accepted.map((client, index) => {
+      request
+        .input(`name_${index}`, sql.NVarChar(255), client.name)
+        .input(`phone_${index}`, sql.NVarChar(100), client.phone)
+        .input(`city_${index}`, sql.NVarChar(255), client.city)
+        .input(`notes_${index}`, sql.NVarChar(sql.MAX), client.notes)
+        .input(`extra_${index}`, sql.NVarChar(sql.MAX), JSON.stringify(clientExtra(client)));
+      return `(@name_${index}, @phone_${index}, @city_${index}, @notes_${index}, @extra_${index})`;
+    });
+    const result = await request.query(`
+      INSERT INTO Clients (Name, Phone, City, Notes, Extra)
+      OUTPUT INSERTED.Id, INSERTED.Name, INSERTED.Phone, INSERTED.City, INSERTED.Notes, INSERTED.Extra
+      VALUES ${values.join(',\n')}
+    `);
+    inserted = result.recordset.map(parseClientRow);
+    inserted.forEach((client) => {
+      session.records.set(client.id, client);
+      clientIdentityCandidates(client).forEach((key) => {
+        if (!session.identityIndex.has(key)) session.identityIndex.set(key, new Set());
+        session.identityIndex.get(key).add(client.id);
+      });
+    });
+  }
+
+  // Les fiches existantes sont enrichies sans créer une deuxième ligne.
+  let updated = [];
+  if (updates.length > 0) {
+    const request = pool.request();
+    const statements = updates.map((entry, index) => {
+      request
+        .input(`update_id_${index}`, sql.Int, entry.id)
+        .input(`update_name_${index}`, sql.NVarChar(255), entry.client.name)
+        .input(`update_phone_${index}`, sql.NVarChar(100), entry.client.phone)
+        .input(`update_city_${index}`, sql.NVarChar(255), entry.client.city)
+        .input(`update_notes_${index}`, sql.NVarChar(sql.MAX), entry.client.notes)
+        .input(`update_extra_${index}`, sql.NVarChar(sql.MAX), JSON.stringify(clientExtra(entry.client)));
+      return `UPDATE Clients SET Name=@update_name_${index}, Phone=@update_phone_${index}, City=@update_city_${index}, Notes=@update_notes_${index}, Extra=@update_extra_${index}, CreatedAt=CreatedAt WHERE Id=@update_id_${index};`;
+    });
+    await request.query(statements.join('\n'));
+    const ids = updates.map((entry) => entry.id).join(',');
+    const verified = await pool.request().query(`SELECT Id, Name, Phone, City, Notes, Extra FROM Clients WHERE Id IN (${ids})`);
+    updated = verified.recordset.map(parseClientRow);
+  }
+  return { inserted: [...inserted, ...updated], duplicates, updated };
+}
+
+// Initialise une session : les clés existantes ne sont chargées qu'une fois pour tous les lots.
+app.post('/api/clients/import-start', requireAdmin, async (_req, res) => {
   try {
-    const { clients } = req.body;
+    const importId = await createClientImportSession();
+    res.json({ importId });
+  } catch (err) {
+    console.error('Error starting client import:', err);
+    res.status(500).json({ error: 'Impossible de préparer l’import', details: err.message });
+  }
+});
+
+app.post('/api/clients/import-finish', requireAdmin, (req, res) => {
+  if (req.body?.importId) clientImportSessions.delete(req.body.importId);
+  res.json({ message: 'Session d’import terminée' });
+});
+
+// POST /api/clients/import-batch — insertion SQL groupée avec retour de vérification
+app.post('/api/clients/import-batch', requireAdmin, async (req, res) => {
+  try {
+    const { clients } = req.body || {};
     if (!clients || !Array.isArray(clients) || clients.length === 0) {
       return res.status(400).json({ error: 'Aucun client à importer' });
     }
-
-    const pool = await poolPromise;
-    let imported = 0;
-
-    for (const client of clients) {
-      if (!client.name || !client.phone) continue;
-      // Normalize phone: strip spaces, dashes, dots
-      const cleanPhone = client.phone.replace(/[\s\-\.\(\)]/g, '');
-      await pool.request()
-        .input('Name', sql.NVarChar(255), client.name)
-        .input('Phone', sql.NVarChar(100), cleanPhone)
-        .input('City', sql.NVarChar(255), client.city || '')
-        .input('Notes', sql.NVarChar(sql.MAX), client.notes || '')
-        .query(`
-          INSERT INTO Clients (Name, Phone, City, Notes)
-          VALUES (@Name, @Phone, @City, @Notes)
-        `);
-      imported++;
-    }
-
-    res.json({ message: `${imported} client(s) importé(s) avec succès`, count: imported });
+    if (clients.length > 250) return res.status(400).json({ error: 'Un lot ne peut pas dépasser 250 lignes' });
+    const session = req.body.importId ? clientImportSessions.get(req.body.importId) : null;
+    if (req.body.importId && !session) return res.status(410).json({ error: 'Session d’import expirée. Veuillez recommencer.' });
+    const result = await importClientBatch(clients, session);
+    res.json({
+      message: `${result.inserted.length - result.updated.length} nouveau(x) client(s), ${result.updated.length} fiche(s) enrichie(s)`,
+      count: result.inserted.length - result.updated.length,
+      updatedCount: result.updated.length,
+      duplicateCount: result.duplicates.length,
+      inserted: result.inserted,
+      duplicates: result.duplicates,
+    });
   } catch (err) {
-    console.error('Error importing clients:', err);
-    res.status(500).json({ error: 'Erreur lors de l\'import des clients' });
+    console.error('Error importing client batch:', err);
+    res.status(500).json({ error: 'Échec de l’insertion du lot', details: err.message });
+  }
+});
+
+// Nettoyage des sessions abandonnées après 30 minutes.
+setInterval(() => {
+  const expiration = Date.now() - 30 * 60 * 1000;
+  for (const [id, session] of clientImportSessions.entries()) {
+    if (session.touchedAt < expiration) clientImportSessions.delete(id);
+  }
+}, 5 * 60 * 1000).unref();
+
+// Compatibilité avec les anciennes versions du frontend (maximum 250 lignes).
+app.post('/api/clients/import', requireAdmin, async (req, res) => {
+  try {
+    const clients = Array.isArray(req.body?.clients) ? req.body.clients : [];
+    if (!clients.length) return res.status(400).json({ error: 'Aucun client à importer' });
+    if (clients.length > 250) return res.status(400).json({ error: 'Utilisez /api/clients/import-batch par lots de 250 lignes maximum' });
+    const result = await importClientBatch(clients);
+    res.json({ count: result.inserted.length, duplicateCount: result.duplicates.length });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur lors de l’import des clients', details: err.message });
   }
 });
 
@@ -384,7 +761,7 @@ app.get('/api/products/:slug', async (req, res) => {
 });
 
 // POST /api/products — Create a new product
-app.post('/api/products', async (req, res) => {
+app.post('/api/products', requireAdmin, async (req, res) => {
   try {
     const { name, slug, category, brand, capacityWh, outputPowerW, expandable,
             description, keyFeatures, priceMad, url, imageUrl } = req.body;
@@ -425,8 +802,119 @@ app.post('/api/products', async (req, res) => {
   }
 });
 
+// PUT /api/products/:id — Modification complète d'un produit (admin)
+app.put('/api/products/:id', requireAdmin, async (req, res) => {
+  try {
+    const { name, slug, category, brand, capacityWh, outputPowerW, expandable,
+      description, keyFeatures, priceMad, url, imageUrl } = req.body;
+    if (!name || !slug || !category) return res.status(400).json({ error: 'name, slug, and category are required' });
+    const pool = await poolPromise;
+    const exists = await pool.request().input('Id', sql.Int, parseInt(req.params.id)).query(`SELECT Id FROM Products WHERE Id=@Id AND IsActive=1`);
+    if (!exists.recordset.length) return res.status(404).json({ error: 'Produit non trouvé' });
+    const result = await pool.request()
+      .input('Id', sql.Int, parseInt(req.params.id))
+      .input('Name', sql.NVarChar(255), name)
+      .input('Slug', sql.NVarChar(255), slug)
+      .input('Category', sql.NVarChar(100), category)
+      .input('Brand', sql.NVarChar(50), brand || 'EcoFlow')
+      .input('CapacityWh', sql.Int, capacityWh === '' || capacityWh === undefined ? null : parseInt(capacityWh))
+      .input('OutputPowerW', sql.Int, outputPowerW === '' || outputPowerW === undefined ? null : parseInt(outputPowerW))
+      .input('Expandable', sql.Bit, expandable ? 1 : 0)
+      .input('Description', sql.NVarChar(sql.MAX), description || null)
+      .input('KeyFeatures', sql.NVarChar(sql.MAX), keyFeatures ? JSON.stringify(keyFeatures) : null)
+      .input('PriceMad', sql.Float, priceMad === '' || priceMad === undefined ? null : parseFloat(priceMad))
+      .input('Url', sql.NVarChar(sql.MAX), url || null)
+      .query(`
+        UPDATE Products SET Name=@Name, Slug=@Slug, Category=@Category, Brand=@Brand,
+          CapacityWh=@CapacityWh, OutputPowerW=@OutputPowerW, Expandable=@Expandable,
+          Description=@Description, KeyFeatures=@KeyFeatures, PriceMad=@PriceMad,
+          Url=@Url, UpdatedAt=GETDATE()
+        WHERE Id=@Id AND IsActive=1
+      `);
+    res.json({ message: 'Produit modifié avec succès' });
+  } catch (err) {
+    if (err.message && err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Un produit avec ce slug existe déjà' });
+    console.error('Error updating product:', err);
+    res.status(500).json({ error: 'Erreur lors de la modification du produit' });
+  }
+});
+
+// POST /api/products/:id/image — Upload local optimisé, SQL ne conserve que l'URL
+app.post('/api/products/:id/image', requireAdmin, (req, res) => {
+  productImageUpload.single('image')(req, res, async (uploadError) => {
+    if (uploadError) {
+      const message = uploadError.code === 'LIMIT_FILE_SIZE'
+        ? 'Image trop volumineuse (maximum 5 Mo)'
+        : 'Format d’image non accepté. Utilisez JPG, PNG, WEBP ou GIF.';
+      return res.status(400).json({ error: message });
+    }
+    if (!req.file) return res.status(400).json({ error: 'Aucune image reçue' });
+    try {
+      const id = parseInt(req.params.id);
+      const pool = await poolPromise;
+      const oldResult = await pool.request().input('Id', sql.Int, id)
+        .query(`SELECT ImageUrl FROM Products WHERE Id=@Id AND IsActive=1`);
+      if (!oldResult.recordset.length) {
+        fs.unlink(req.file.path, () => undefined);
+        return res.status(404).json({ error: 'Produit non trouvé' });
+      }
+      const imageUrl = `/uploads/products/${req.file.filename}`;
+      await pool.request()
+        .input('Id', sql.Int, id)
+        .input('ImageUrl', sql.NVarChar(sql.MAX), imageUrl)
+        .query(`UPDATE Products SET ImageUrl=@ImageUrl, UpdatedAt=GETDATE() WHERE Id=@Id`);
+
+      const oldUrl = oldResult.recordset[0].ImageUrl;
+      if (oldUrl && oldUrl.startsWith('/uploads/products/')) {
+        fs.unlink(path.join(__dirname, oldUrl.replace(/^\//, '')), () => undefined);
+      }
+      res.json({ imageUrl, message: 'Image du produit enregistrée avec succès' });
+    } catch (err) {
+      fs.unlink(req.file.path, () => undefined);
+      console.error('Error uploading product image:', err);
+      res.status(500).json({ error: 'Erreur lors de l’enregistrement de l’image' });
+    }
+  });
+});
+
+app.delete('/api/products/:id/image', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const pool = await poolPromise;
+    const result = await pool.request().input('Id', sql.Int, id)
+      .query(`SELECT ImageUrl FROM Products WHERE Id=@Id AND IsActive=1`);
+    if (!result.recordset.length) return res.status(404).json({ error: 'Produit non trouvé' });
+    const imageUrl = result.recordset[0].ImageUrl;
+    await pool.request().input('Id', sql.Int, id)
+      .query(`UPDATE Products SET ImageUrl=NULL, UpdatedAt=GETDATE() WHERE Id=@Id`);
+    if (imageUrl && imageUrl.startsWith('/uploads/products/')) fs.unlink(path.join(__dirname, imageUrl.replace(/^\//, '')), () => undefined);
+    res.json({ message: 'Image supprimée avec succès' });
+  } catch (err) {
+    console.error('Error deleting product image:', err);
+    res.status(500).json({ error: 'Erreur lors de la suppression de l’image' });
+  }
+});
+
+// DELETE /api/products/:id — Suppression physique du catalogue.
+// Les ventes historiques stockent déjà le snapshot du produit dans OtherSales,
+// donc la suppression du catalogue ne casse pas les anciens documents.
+app.delete('/api/products/:id', requireAdmin, async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const exists = await pool.request().input('Id', sql.Int, parseInt(req.params.id)).query(`SELECT Id FROM Products WHERE Id=@Id`);
+    if (!exists.recordset.length) return res.status(404).json({ error: 'Produit non trouvé' });
+    const result = await pool.request()
+      .input('Id', sql.Int, parseInt(req.params.id))
+      .query(`DELETE FROM Products WHERE Id=@Id`);
+    res.json({ message: 'Produit supprimé définitivement du catalogue' });
+  } catch (err) {
+    console.error('Error deleting product:', err);
+    res.status(500).json({ error: 'Erreur lors de la suppression du produit' });
+  }
+});
+
 // POST /api/products/seed — Seed initial products for recommendation engine
-app.post('/api/products/seed', async (req, res) => {
+app.post('/api/products/seed', requireAdmin, async (req, res) => {
   try {
     const pool = await poolPromise;
 
@@ -615,7 +1103,7 @@ app.get('/api/equipment', async (req, res) => {
 });
 
 // POST /api/equipment — Create a new equipment item
-app.post('/api/equipment', async (req, res) => {
+app.post('/api/equipment', requireAdmin, async (req, res) => {
   try {
     const { name, defaultPower, icon, category, subCategory } = req.body;
 
@@ -644,7 +1132,7 @@ app.post('/api/equipment', async (req, res) => {
 });
 
 // PUT /api/equipment/:id — Update an equipment item
-app.put('/api/equipment/:id', async (req, res) => {
+app.put('/api/equipment/:id', requireAdmin, async (req, res) => {
   try {
     const { name, defaultPower, icon, category, subCategory } = req.body;
     const pool = await poolPromise;
@@ -681,7 +1169,7 @@ app.put('/api/equipment/:id', async (req, res) => {
 });
 
 // POST /api/equipment/seed — Seed initial equipment catalog from static data
-app.post('/api/equipment/seed', async (req, res) => {
+app.post('/api/equipment/seed', requireAdmin, async (req, res) => {
   try {
     const pool = await poolPromise;
 

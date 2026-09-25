@@ -68,8 +68,13 @@ class RequestWrapper {
 
       // Replace @param placeholders with actual values (replace ALL occurrences)
       self._inputs.forEach(function(input) {
-        const val = typeof input.value === 'string' ? "'" + input.value.replace(/'/g, "''") + "'" : input.value;
-        const re = new RegExp('@' + input.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+        const val = input.value === null || input.value === undefined
+          ? 'NULL'
+          : typeof input.value === 'string'
+            ? "'" + input.value.replace(/'/g, "''") + "'"
+            : input.value;
+        // Évite que @Name1 remplace le début de @Name10 dans les requêtes en lot.
+        const re = new RegExp('@' + input.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![A-Za-z0-9_])', 'g');
         queryText = queryText.replace(re, val);
       });
 

@@ -14,13 +14,6 @@ export const DEFAULT_BALCO_SPECS = {
 // Heures d'ensoleillement équivalentes par défaut
 const DEFAULT_SUN_HOURS = 4.5;
 
-// Calcul du tarif moyen pondéré
-function calculerTarifMoyen(consommationHP: number, consommationHC: number, tarifHP: number, tarifHC: number): number {
-  const total = consommationHP + consommationHC;
-  if (total === 0) return 0;
-  return (consommationHP * tarifHP + consommationHC * tarifHC) / total;
-}
-
 // Calcul de l'écart tarifaire HP/HC
 export function calculerEcartTarifaire(tarifHP: number, tarifHC: number): number {
   return tarifHP - tarifHC;

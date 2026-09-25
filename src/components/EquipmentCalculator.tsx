@@ -109,6 +109,16 @@ const EquipmentCalculator: React.FC<EquipmentCalculatorProps> = ({
     return grouped;
   }, [selectedCategory, searchTerm, catalog]);
 
+  const availableCategories = useMemo(() => {
+    const fromCatalog = [...new Set(catalog.map((item) => item.category).filter(Boolean))];
+    // Les catégories historiques restent disponibles même avant le chargement DB.
+    return [...new Set([...CATEGORIES, ...fromCatalog])];
+  }, [catalog]);
+
+  useEffect(() => {
+    if (!availableCategories.includes(selectedCategory)) setSelectedCategory(availableCategories[0] || CATEGORIES[0]);
+  }, [availableCategories, selectedCategory]);
+
   return (
     <Box>
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 2fr' }, gap: 3 }}>
@@ -124,7 +134,7 @@ const EquipmentCalculator: React.FC<EquipmentCalculatorProps> = ({
               Catégorie
             </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-              {CATEGORIES.map((cat) => (
+              {availableCategories.map((cat) => (
                 <Chip
                   key={cat}
                   label={cat.replace(/^\d+\.\s*/, '').split('&')[0].trim()}

@@ -28,9 +28,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { SelectedEquipment, CustomerInfo, ProductRecommendation } from '../types';
 import { useProjectStore } from '../hooks/useProjectStore';
 import { calculateConsumption } from '../utils/solarCalculations';
-import { getRecommendationFromProducts } from '../utils/productsApi';
-import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { getRecommendationFromProducts, resolveProductImageUrl } from '../utils/productsApi';
 
 interface RecommendationViewProps {
   equipment: SelectedEquipment[];
@@ -117,8 +115,10 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
             panelPower: rec.panelPower,
             panelCount: rec.panelCount,
             panelModel: `${rec.panel.outputPowerW}W ${rec.panel.brand}`,
+            panelUnitPrice: rec.panel.priceMad ?? 0,
             batteryCapacity: rec.batteryCapacity,
             batteryModel: `${rec.battery.name}`,
+            batteryPrice: rec.battery.priceMad ?? 0,
             autonomyDays: rec.autonomyDays,
             orderNumber,
             paymentDate: paymentDateInput,
@@ -126,6 +126,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
           if (rec.inverter) {
             recommendation.inverterPower = rec.inverterPower;
             recommendation.inverterModel = `${(rec.inverter.outputPowerW || 0) / 1000}kW ${rec.inverter.brand}`;
+            recommendation.inverterPrice = rec.inverter.priceMad ?? 0;
           }
           await fetch(`http://${window.location.hostname}:5000/api/projects`, {
             method: 'POST',
@@ -156,8 +157,10 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
         panelPower: rec.panelPower,
         panelCount: rec.panelCount,
         panelModel: `${rec.panel.outputPowerW}W ${rec.panel.brand}`,
+        panelUnitPrice: rec.panel.priceMad ?? 0,
         batteryCapacity: rec.batteryCapacity,
         batteryModel: `${rec.battery.name}`,
+        batteryPrice: rec.battery.priceMad ?? 0,
         autonomyDays: rec.autonomyDays,
         orderNumber,
         paymentDate,
@@ -165,6 +168,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
       if (rec.inverter) {
         recommendation.inverterPower = rec.inverterPower;
         recommendation.inverterModel = `${(rec.inverter.outputPowerW || 0) / 1000}kW ${rec.inverter.brand}`;
+        recommendation.inverterPrice = rec.inverter.priceMad ?? 0;
       }
       const response = await fetch(`http://${window.location.hostname}:5000/api/projects`, {
         method: 'POST',
@@ -193,7 +197,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
 
   const formatPrice = (price: number | null) => {
     if (price === null || price === undefined) return '-';
-    return new Intl.NumberFormat('fr-FR').format(price) + ' MAD';
+    return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(price) + ' €';
   };
 
   // Missing data state
@@ -260,7 +264,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
       ],
       color: 'primary.main',
       url: rec.panel.url,
-      imageUrl: rec.panel.imageUrl,
+       imageUrl: resolveProductImageUrl(rec.panel.imageUrl),
     }] : []),
     {
       title: 'Batterie Lithium',
@@ -273,7 +277,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
       ],
       color: 'secondary.main',
       url: rec.battery.url,
-      imageUrl: rec.battery.imageUrl,
+       imageUrl: resolveProductImageUrl(rec.battery.imageUrl),
     },
     ...(rec.inverter ? [{
       title: 'Onduleur Hybride',
@@ -286,7 +290,7 @@ const RecommendationView: React.FC<RecommendationViewProps> = ({ equipment, cust
       ],
       color: '#fbc02d',
       url: rec.inverter.url,
-      imageUrl: rec.inverter.imageUrl,
+       imageUrl: resolveProductImageUrl(rec.inverter.imageUrl),
     }] : []),
   ];
 

@@ -46,11 +46,11 @@ const API_URL = `http://${window.location.hostname}:5000/api/projects`;
 
 interface SavedProjectsProps {
   onGenerateReport?: (projectId: number) => void;
-  onGenerateInvoice?: (projectId: number) => void;
+  onGenerateDevis?: (projectId: number) => void;
   onViewSimulation?: (projectId: number) => void;
 }
 
-const SavedProjects: React.FC<SavedProjectsProps> = ({ onGenerateReport, onGenerateInvoice, onViewSimulation }) => {
+const SavedProjects: React.FC<SavedProjectsProps> = ({ onGenerateReport, onGenerateDevis, onViewSimulation }) => {
   const [projects, setProjects] = useState<SavedProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +63,7 @@ const SavedProjects: React.FC<SavedProjectsProps> = ({ onGenerateReport, onGener
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(API_URL);
+      const response = await fetch(API_URL, { credentials: 'include' });
       if (!response.ok) throw new Error('Erreur lors du chargement');
       const data = await response.json();
       setProjects(data);
@@ -88,7 +88,7 @@ const SavedProjects: React.FC<SavedProjectsProps> = ({ onGenerateReport, onGener
     setExpandedId(id);
     setLoadingDetail(true);
     try {
-      const response = await fetch(`${API_URL}/${id}`);
+      const response = await fetch(`${API_URL}/${id}`, { credentials: 'include' });
       if (!response.ok) throw new Error('Erreur');
       const data = await response.json();
       setExpandedProject(data);
@@ -242,16 +242,16 @@ const SavedProjects: React.FC<SavedProjectsProps> = ({ onGenerateReport, onGener
                               Rapport
                             </Button>
                           )}
-                          {onGenerateInvoice && (
+                          {onGenerateDevis && (
                             <Button
                               size="small"
                               variant="outlined"
                               color="secondary"
-                              onClick={() => onGenerateInvoice(project.id)}
-                              title="Générer la facture"
+                              onClick={() => onGenerateDevis(project.id)}
+                              title="Générer le devis"
                               sx={{ minWidth: 0, px: 1, fontSize: '0.75rem' }}
                             >
-                              Facture
+                              Devis
                             </Button>
                           )}
                           {onViewSimulation && (

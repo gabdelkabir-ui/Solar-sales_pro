@@ -29,11 +29,11 @@ import AssessmentIcon from '@mui/icons-material/Assessment';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Product } from '../types';
+import { Product, ReportType } from '../types';
+import { formatPrice } from '../utils/pricing';
+import { TVA_RATE } from '../constants/config';
 
 const API_BASE = `http://${window.location.hostname}:5000/api`;
-
-const TVA_RATE = 0.20;
 
 interface Client {
   id: number;
@@ -62,7 +62,7 @@ const generateOrderNumber = () => {
 };
 
 interface OtherProductsSaleProps {
-  onGenerateReport?: (sale: Sale, type: 'bon-de-commande' | 'facture') => void;
+  onGenerateReport?: (sale: Sale, type: ReportType) => void;
 }
 
 const OtherProductsSale: React.FC<OtherProductsSaleProps> = ({ onGenerateReport }) => {
@@ -169,11 +169,6 @@ const OtherProductsSale: React.FC<OtherProductsSaleProps> = ({ onGenerateReport 
     return cart.reduce((sum, item) => sum + (item.product.priceMad || 0) * item.quantity, 0);
   };
 
-  const formatPrice = (price: number | null) => {
-    if (price === null || price === undefined) return '-';
-    return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(price) + ' €';
-  };
-
   const handleSaveSale = async () => {
     if (!selectedClient) {
       setSnackbar({ open: true, message: 'Veuillez sélectionner un client', severity: 'error' });
@@ -190,12 +185,9 @@ const OtherProductsSale: React.FC<OtherProductsSaleProps> = ({ onGenerateReport 
     setSaving(true);
     try {
       const orderNumber = generateOrderNumber();
-      const customerInfo = {
-        name: selectedClient!.name,
-        phone: selectedClient!.phone,
-        city: selectedClient!.city,
-        notes: selectedClient!.notes,
-      };
+      // Préserver tous les champs client (y compris les champs étendus ajoutés à l'import)
+      const customerInfo: any = { ...selectedClient };
+      delete customerInfo.id;
 
       const res = await fetch(`${API_BASE}/other-sales`, {
         method: 'POST',
@@ -498,10 +490,10 @@ const OtherProductsSale: React.FC<OtherProductsSaleProps> = ({ onGenerateReport 
                             variant="outlined"
                             color="secondary"
                             startIcon={<ReceiptIcon />}
-                            onClick={() => onGenerateReport?.(sale, 'facture')}
+                            onClick={() => onGenerateReport?.(sale, 'devis')}
                             sx={{ fontSize: '0.75rem' }}
                           >
-                            Facture
+                            Devis
                           </Button>
                         </Box>
                       </TableCell>

@@ -30,29 +30,57 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import InventoryIcon from '@mui/icons-material/Inventory';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { Product } from '../types';
-import { fetchProducts, seedProducts } from '../utils/productsApi';
+import { fetchProducts, seedProducts, resolveProductImageUrl } from '../utils/productsApi';
 
 const API_BASE = `http://${window.location.hostname}:5000/api`;
 
 const CATEGORY_LABELS: Record<string, string> = {
-  panel: 'Panneau solaire',
-  battery: 'Batterie',
+  power_station: 'Stations électriques',
+  panel: 'Panneaux solaires',
+  battery: 'Batteries',
+  accessory: 'Accessoires',
+  solar_kit: 'Kit solaire',
+  energy_kit_component: 'Composants Kits énergie',
+  air_conditioning: 'Climatisation',
+  portable_fridge: 'Réfrigérateurs portables / Glacières électriques',
   inverter: 'Onduleur',
   other: 'Autre',
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
+  power_station: '#1565c0',
   panel: '#1976d2',
   battery: '#2e7d32',
+  accessory: '#6a1b9a',
+  solar_kit: '#ef6c00',
+  energy_kit_component: '#00838f',
+  air_conditioning: '#0277bd',
+  portable_fridge: '#455a64',
   inverter: '#f57c00',
   other: '#9c27b0',
 };
 
+const CATEGORY_OPTIONS = [
+  { value: 'power_station', label: 'Stations électriques' },
+  { value: 'panel', label: 'Panneaux solaires' },
+  { value: 'battery', label: 'Batteries' },
+  { value: 'accessory', label: 'Accessoires' },
+  { value: 'solar_kit', label: 'Kit solaire' },
+  { value: 'energy_kit_component', label: 'Composants Kits énergie' },
+  { value: 'air_conditioning', label: 'Climatisation' },
+  { value: 'portable_fridge', label: 'Réfrigérateurs portables / Glacières électriques' },
+  // Compatibilité avec les anciennes lignes du catalogue.
+  { value: 'inverter', label: 'Onduleur (ancien catalogue)' },
+  { value: 'other', label: 'Autre (ancien catalogue)' },
+];
+
 interface FormData {
   name: string;
   slug: string;
-  category: 'panel' | 'battery' | 'inverter' | 'other';
+  category: string;
   brand: string;
   outputPowerW: string;
   capacityWh: string;
@@ -80,6 +108,9 @@ const ProductsManager: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [seeding, setSeeding] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [form, setForm] = useState<FormData>(emptyForm);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false,
@@ -110,7 +141,7 @@ const ProductsManager: React.FC = () => {
     setSeeding(false);
   };
 
-  const handleCreate = async () => {
+  const handleSave = async () => {
     if (!form.name || !form.slug) {
       setSnackbar({ open: true, message: 'Nom et slug sont requis', severity: 'error' });
       return;
@@ -124,28 +155,88 @@ const ProductsManager: React.FC = () => {
         expandable: form.expandable,
         description: form.description || null,
         keyFeatures: form.keyFeatures ? form.keyFeatures.split('\n').filter(Boolean) : null,
-        priceMad: form.priceMad ? parseInt(form.priceMad) : null,
+         priceMad: form.priceMad ? parseFloat(form.priceMad) : null,
         url: '',
-        imageUrl: '',
       };
       if (form.outputPowerW) body.outputPowerW = parseInt(form.outputPowerW);
       if (form.capacityWh) body.capacityWh = parseInt(form.capacityWh);
 
-      const res = await fetch(`${API_BASE}/products`, {
-        method: 'POST',
+      const res = await fetch(`${API_BASE}/products${editingId ? `/${editingId}` : ''}`, {
+        method: editingId ? 'PUT' : 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (!res.ok) {
+       if (!res.ok) {
         const errData = await res.json();
-        throw new Error(errData.error || 'Create failed');
-      }
-      setSnackbar({ open: true, message: 'Produit créé avec succès', severity: 'success' });
-      setDialogOpen(false);
-      setForm(emptyForm);
-      loadProducts();
+         throw new Error(errData.error || 'Create failed');
+       }
+       const savedProduct = await res.json();
+       const productId = editingId || savedProduct.id;
+       if (imageFile && productId) {
+         const imageData = new FormData();
+         imageData.append('image', imageFile);
+         const imageResponse = await fetch(`${API_BASE}/products/${productId}/image`, {
+           method: 'POST', credentials: 'include', body: imageData,
+         });
+         const imageResult = await imageResponse.json().catch(() => ({}));
+         if (!imageResponse.ok) throw new Error(imageResult.error || 'Produit enregistré, mais l’image n’a pas pu être envoyée');
+       }
+       setSnackbar({ open: true, message: editingId ? 'Produit et image modifiés avec succès' : 'Produit et image créés avec succès', severity: 'success' });
+        setDialogOpen(false);
+        setForm(emptyForm);
+        setEditingId(null);
+       setImageFile(null);
+       setImagePreview(null);
+        loadProducts();
     } catch (err: any) {
       setSnackbar({ open: true, message: err.message || 'Erreur lors de la création', severity: 'error' });
+    }
+  };
+
+  const handleEdit = (product: Product) => {
+    setEditingId(product.id);
+    setForm({
+      name: product.name, slug: product.slug, category: product.category, brand: product.brand || 'EcoFlow',
+      outputPowerW: product.outputPowerW?.toString() || '', capacityWh: product.capacityWh?.toString() || '',
+      priceMad: product.priceMad?.toString() || '', expandable: product.expandable,
+      description: product.description || '', keyFeatures: product.keyFeatures?.join('\n') || '',
+     });
+    setImageFile(null);
+    setImagePreview(resolveProductImageUrl(product.imageUrl));
+     setDialogOpen(true);
+   };
+
+  const handleImageChange = (file: File | undefined) => {
+    if (!file) return;
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
+
+  const handleDeleteImage = async () => {
+    if (!editingId) return;
+    const res = await fetch(`${API_BASE}/products/${editingId}/image`, { method: 'DELETE', credentials: 'include' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setSnackbar({ open: true, message: data.error || 'Erreur lors de la suppression de l’image', severity: 'error' });
+      return;
+    }
+    setImageFile(null);
+    setImagePreview(null);
+    setSnackbar({ open: true, message: 'Image supprimée avec succès', severity: 'success' });
+    loadProducts();
+  };
+
+  const handleDelete = async (product: Product) => {
+    if (!window.confirm(`Supprimer définitivement « ${product.name} » de la base ? Les ventes historiques seront conservées.`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/products/${product.id}`, { method: 'DELETE', credentials: 'include' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erreur lors de la suppression');
+      setSnackbar({ open: true, message: 'Produit supprimé définitivement de la base', severity: 'success' });
+      loadProducts();
+    } catch (err: any) {
+      setSnackbar({ open: true, message: err.message || 'Erreur lors de la suppression', severity: 'error' });
     }
   };
 
@@ -195,10 +286,10 @@ const ProductsManager: React.FC = () => {
           >
             Ajouter produits démo
           </Button>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setDialogOpen(true)}
+           <Button
+             variant="contained"
+             startIcon={<AddIcon />}
+             onClick={() => { setEditingId(null); setForm(emptyForm); setImageFile(null); setImagePreview(null); setDialogOpen(true); }}
           >
             Nouveau produit
           </Button>
@@ -224,7 +315,7 @@ const ProductsManager: React.FC = () => {
         </Paper>
       ) : (
         <TableContainer component={Paper}>
-          <Table size="small">
+           <Table size="small">
             <TableHead>
               <TableRow sx={{ bgcolor: '#f5f5f5' }}>
                 <TableCell><strong>Nom</strong></TableCell>
@@ -233,7 +324,8 @@ const ProductsManager: React.FC = () => {
                 <TableCell align="center"><strong>Puissance (W)</strong></TableCell>
                 <TableCell align="center"><strong>Capacité (Wh)</strong></TableCell>
                 <TableCell align="center"><strong>Extensible</strong></TableCell>
-                <TableCell align="right"><strong>Prix (€)</strong></TableCell>
+                 <TableCell align="right"><strong>Prix (€)</strong></TableCell>
+                 <TableCell align="center"><strong>Actions</strong></TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -270,9 +362,13 @@ const ProductsManager: React.FC = () => {
                       <Chip label="Non" size="small" variant="outlined" />
                     )}
                   </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 500 }}>
-                    {formatPrice(product.priceMad)}
-                  </TableCell>
+                   <TableCell align="right" sx={{ fontWeight: 500 }}>
+                     {formatPrice(product.priceMad)}
+                   </TableCell>
+                   <TableCell align="center">
+                     <Button size="small" startIcon={<EditIcon />} onClick={() => handleEdit(product)}>Modifier</Button>
+                     <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => handleDelete(product)}>Supprimer</Button>
+                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -281,8 +377,8 @@ const ProductsManager: React.FC = () => {
       )}
 
       {/* Create Product Dialog */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Nouveau produit</DialogTitle>
+       <Dialog open={dialogOpen} onClose={() => { setDialogOpen(false); setEditingId(null); setImageFile(null); setImagePreview(null); }} maxWidth="md" fullWidth>
+         <DialogTitle>{editingId ? 'Modifier le produit' : 'Nouveau produit'}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
@@ -310,10 +406,9 @@ const ProductsManager: React.FC = () => {
                   label="Catégorie"
                   onChange={(e) => handleFormChange('category', e.target.value)}
                 >
-                  <MenuItem value="panel">Panneau solaire</MenuItem>
-                  <MenuItem value="battery">Batterie</MenuItem>
-                  <MenuItem value="inverter">Onduleur</MenuItem>
-                  <MenuItem value="other">Autre</MenuItem>
+                   {CATEGORY_OPTIONS.map((category) => (
+                     <MenuItem key={category.value} value={category.value}>{category.label}</MenuItem>
+                   ))}
                 </Select>
               </FormControl>
               <TextField
@@ -356,6 +451,19 @@ const ProductsManager: React.FC = () => {
               onChange={(e) => handleFormChange('description', e.target.value)}
               size="small"
             />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+              <Button variant="outlined" component="label">
+                {imageFile ? 'Changer l’image sélectionnée' : 'Télécharger une image'}
+                <input hidden type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => handleImageChange(event.target.files?.[0])} />
+              </Button>
+              <Typography variant="caption" color="text.secondary">JPG, PNG, WEBP ou GIF — maximum 5 Mo</Typography>
+              {imagePreview && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box component="img" src={imagePreview} alt="Aperçu du produit" sx={{ width: 80, height: 60, objectFit: 'contain', border: '1px solid #ddd', borderRadius: 1 }} />
+                  {editingId && !imageFile && <Button size="small" color="error" onClick={handleDeleteImage}>Supprimer l’image</Button>}
+                </Box>
+              )}
+            </Box>
             <TextField
               label="Caractéristiques clés (une par ligne)"
               multiline
@@ -377,8 +485,8 @@ const ProductsManager: React.FC = () => {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setDialogOpen(false); setForm(emptyForm); }}>Annuler</Button>
-          <Button variant="contained" onClick={handleCreate}>Créer le produit</Button>
+          <Button onClick={() => { setDialogOpen(false); setForm(emptyForm); setEditingId(null); setImageFile(null); setImagePreview(null); }}>Annuler</Button>
+          <Button variant="contained" onClick={handleSave}>{editingId ? 'Enregistrer les modifications' : 'Créer le produit'}</Button>
         </DialogActions>
       </Dialog>
 
