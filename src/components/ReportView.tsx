@@ -232,6 +232,7 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment, onBack, ov
   const today = new Date();
 
   const orderNumber = overrideOrderNumber || storeOrderNumber || generateOrderNumber();
+  const documentNumberLabel = reportType === 'devis' ? 'Numéro de devis' : 'Numéro de commande';
   const showContent = !loading && (rec || hasSavedData);
   const showEmpty = !loading && !rec && !hasSavedData;
 
@@ -330,7 +331,7 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment, onBack, ov
           </Box>
           <Box sx={{ textAlign: 'right', fontSize: '0.85rem' }}>
             <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Date : {format(today, 'dd/MM/yyyy', { locale: fr })}</Typography>
-            <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Numéro de commande : {orderNumber}</Typography>
+            <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{documentNumberLabel} : {orderNumber}</Typography>
           </Box>
         </Box>
 
@@ -350,25 +351,25 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment, onBack, ov
             <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 1, fontSize: '0.9rem' }}>
               Désignation des produits :
             </Typography>
-            <TableContainer component={Box} sx={{ mb: 2 }}>
-              <Table size="small" sx={{ borderCollapse: 'collapse' }}>
+            <TableContainer component={Box} sx={{ mb: 2, overflowX: 'auto' }}>
+              <Table size="small" sx={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%', minWidth: 760 }}>
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#f5f5f5', borderBottom: '2px solid #000' }}>
-                    <TableCell sx={{ fontWeight: 'bold', fontSize: '0.8rem', border: '1px solid #000', p: 1 }}>Référence</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', fontSize: '0.8rem', border: '1px solid #000', p: 1 }}>Désignation</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 'bold', fontSize: '0.8rem', border: '1px solid #000', p: 1 }}>Quantité</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 'bold', fontSize: '0.8rem', border: '1px solid #000', p: 1 }}>Prix Unitaire HT</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 'bold', fontSize: '0.8rem', border: '1px solid #000', p: 1 }}>Total HT</TableCell>
+                    <TableCell sx={{ width: '25%', fontWeight: 'bold', fontSize: '0.78rem', border: '1px solid #000', p: 1, wordBreak: 'break-word' }}>Référence</TableCell>
+                    <TableCell sx={{ width: '43%', fontWeight: 'bold', fontSize: '0.78rem', border: '1px solid #000', p: 1, wordBreak: 'break-word' }}>Désignation</TableCell>
+                    <TableCell align="center" sx={{ width: '9%', fontWeight: 'bold', fontSize: '0.78rem', border: '1px solid #000', p: 1 }}>Quantité</TableCell>
+                    <TableCell align="right" sx={{ width: '13%', fontWeight: 'bold', fontSize: '0.78rem', border: '1px solid #000', p: 1 }}>Prix Unitaire HT</TableCell>
+                    <TableCell align="right" sx={{ width: '10%', fontWeight: 'bold', fontSize: '0.78rem', border: '1px solid #000', p: 1 }}>Total HT</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {lineItems.map((item, index) => (
                     <TableRow key={index} sx={{ borderBottom: '1px solid #ccc' }}>
-                      <TableCell sx={{ fontSize: '0.8rem', border: '1px solid #000', p: 1 }}>{item.reference}</TableCell>
-                      <TableCell sx={{ fontSize: '0.8rem', border: '1px solid #000', p: 1 }}>{item.designation}</TableCell>
+                      <TableCell sx={{ fontSize: '0.78rem', border: '1px solid #000', p: 1, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{item.reference}</TableCell>
+                      <TableCell sx={{ fontSize: '0.78rem', border: '1px solid #000', p: 1, wordBreak: 'break-word' }}>{item.designation}</TableCell>
                       <TableCell align="center" sx={{ fontSize: '0.8rem', border: '1px solid #000', p: 1 }}>{item.quantity}</TableCell>
-                      <TableCell align="right" sx={{ fontSize: '0.8rem', border: '1px solid #000', p: 1 }}>{formatPrice(item.unitPrice)}</TableCell>
-                      <TableCell align="right" sx={{ fontSize: '0.8rem', border: '1px solid #000', p: 1 }}>{formatPrice(item.totalHT)}</TableCell>
+                      <TableCell align="right" sx={{ fontSize: '0.8rem', border: '1px solid #000', p: 1, whiteSpace: 'nowrap' }}>{formatPrice(item.unitPrice)}</TableCell>
+                      <TableCell align="right" sx={{ fontSize: '0.8rem', border: '1px solid #000', p: 1, whiteSpace: 'nowrap' }}>{formatPrice(item.totalHT)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -412,7 +413,7 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment, onBack, ov
             {REPORT_TYPES[reportType].hasPaymentConditions && (
               <Box sx={{ mb: 2, fontSize: '0.8rem' }}>
                 <Typography variant="body2" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
-                  <strong>Conditions de paiement :</strong> Paiement à {formatDateSafe(paymentDate, 'dd/MM/yyyy')}
+                  <strong>Conditions de paiement :</strong> Paiement à la commande
                 </Typography>
                 <Typography variant="body2" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
                   <strong>Pénalités de retard :</strong> conformément à l'article L441-10 du Code de commerce.
@@ -428,31 +429,16 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment, onBack, ov
 
             {/* SIGNATURES */}
             <Box sx={{ mb: 2, mt: 4, textAlign: 'left' }}>
-              {REPORT_TYPES[reportType].hasClientSignature && (
-                <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 'bold', mb: 2, textDecoration: 'underline' }}>
-                  Signature client (Bon pour accord) : ____________________
-                </Typography>
-              )}
               <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 'bold', mb: 3, textDecoration: 'underline' }}>
                 Signature {COMPANY.name} :
               </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box>
-                  <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>{COMPANY.address}</Typography>
-                  <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>{COMPANY.postalCity}</Typography>
-                </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Box 
                   component="img"
                   src={signature}
                   alt="Signature"
-                  sx={{ width: 200, height: 'auto', maxHeight: 180 }}
+                  sx={{ width: 210, height: 'auto', maxHeight: 180 }}
                 />
-                <Box sx={{ textAlign: 'right' }}>
-                  <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>{COMPANY.legalFormShort}</Typography>
-                  <Typography variant="body2" sx={{ fontSize: '0.65rem' }}>RCS {COMPANY.rcs} 931</Typography>
-                  <Typography variant="body2" sx={{ fontSize: '0.65rem' }}>{COMPANY.siret.slice(-6)}</Typography>
-
-                </Box>
               </Box>
             </Box>
           </>
@@ -465,6 +451,9 @@ const ReportView: React.FC<ReportViewProps> = ({ customer, equipment, onBack, ov
             </Typography>
           </Box>
         )}
+        <Typography variant="caption" align="center" display="block" sx={{ fontSize: '0.7rem', mt: 2 }}>
+          {COMPANY.legalFormShort} RCS {COMPANY.rcs} 831835425 - {COMPANY.address} {COMPANY.postalCity}
+        </Typography>
       </Paper>
 
       {/* ===== PAGE 2: CONDITIONS GENERALES DE VENTE (dynamiques) ===== */}

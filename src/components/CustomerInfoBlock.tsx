@@ -1,38 +1,49 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
 import { CustomerInfo } from '../types';
-import { CUSTOMER_FIELDS, displayFieldValue, getCustomCustomerFields } from '../utils/customer';
 
 interface CustomerInfoBlockProps {
   customer: CustomerInfo | null | undefined;
 }
 
+const empty = '?';
+
+const clean = (value: unknown): string => {
+  if (value === undefined || value === null) return empty;
+  const text = String(value).trim();
+  return text || empty;
+};
+
+const buildAddress = (customer: CustomerInfo | null | undefined): string => {
+  if (!customer) return empty;
+  const parts = [customer.address, customer.postalCode, customer.city]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  return parts.length ? parts.join(' - ') : empty;
+};
+
+const getContact = (customer: CustomerInfo | null | undefined): string => {
+  if (!customer) return empty;
+  const fullName = [customer.firstName, customer.contact, customer.dirigeants]
+    .map((value) => String(value || '').trim())
+    .find(Boolean);
+  return fullName || empty;
+};
+
 /**
- * Affiche les informations du client dans un zone encadrée.
- * Utilise le registre CUSTOMER_FIELDS et remplace les valeurs absentes par
- * un placeholder (ex: « ? ») : aucune ligne n'est laissée vide de façon incohérente.
+ * Affiche le bloc client du devis / bon de commande selon le modèle Word fourni.
+ * Seules les cinq informations demandées sont visibles dans les documents.
  */
 const CustomerInfoBlock: React.FC<CustomerInfoBlockProps> = ({ customer }) => (
   <Box sx={{ border: '1px solid #000', p: 2, mb: 3, mt: 1 }}>
     <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 1, fontSize: '0.9rem' }}>
       CLIENT :
     </Typography>
-    {CUSTOMER_FIELDS.map((field) => {
-      const value = customer?.[field.key];
-      // Les champs obligatoires restent visibles ; les champs facultatifs vides
-      // ne créent plus d'espaces artificiels dans le document.
-      if (!field.required && (value === undefined || value === null || String(value).trim() === '')) return null;
-      return (
-        <Typography key={field.key} variant="body2" sx={{ fontSize: '0.85rem' }}>
-          {(customer?._fieldLabels?.[field.key] || field.printLabel)} : {displayFieldValue(customer, field.key)}
-        </Typography>
-      );
-    })}
-    {getCustomCustomerFields(customer).map((field) => (
-      <Typography key={field.key} variant="body2" sx={{ fontSize: '0.85rem' }}>
-        {field.label} : {displayFieldValue(customer, field.key)}
-      </Typography>
-    ))}
+    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Contact : {getContact(customer)}</Typography>
+    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Raison sociale : {clean(customer?.name)}</Typography>
+    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Adresse : {buildAddress(customer)}</Typography>
+    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Numéro de téléphone : {clean(customer?.phone)}</Typography>
+    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Adresse mail : {clean(customer?.email)}</Typography>
   </Box>
 );
 
